@@ -1,4 +1,4 @@
-#/usr/bin/env python
+#!/usr/bin/env python
 
 import sys
 
@@ -11,6 +11,6 @@ print "-> The next 10 lines are:"
 i = 0
 while i < 10:
     print data.readline()
-    i++
+    i = i + 1 
 
 sys.exit(0)

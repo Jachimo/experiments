@@ -1,0 +1,18 @@
+# AppleDouble Entry "Types"
+
+From https://formats.kaitai.io/apple_single_double/python.html
+
+data_fork = 1
+resource_fork = 2
+real_name = 3
+comment = 4
+icon_bw = 5
+icon_color = 6
+file_dates_info = 8
+finder_info = 9
+macintosh_file_info = 10
+prodos_file_info = 11
+msdos_file_info = 12
+afp_short_name = 13
+afp_file_info = 14
+afp_directory_id = 15

@@ -1,0 +1,12 @@
+AppleDouble "Flags" to Finder "Labels" Reference
+================================================
+
+Finder "Labels" (colored, with customizable names per color)
+seem to be stored as "Flags" in the AppleDouble file.
+
+Flag values are numeric, while colors are ... colors.
+
+10     Yellow
+14     Orange
+12     Red
+02     Gray

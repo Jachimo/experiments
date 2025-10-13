@@ -6,38 +6,59 @@ import kaitaistruct
 from kaitaistruct import KaitaiStruct, KaitaiStream, BytesIO
 from enum import IntEnum
 import os
+import logging
 
 class AppleDoubleMetadata:
-    def __init__(self, filepath):
+    def __init__(self, filepath, log_level=logging.DEBUG):
+        # Logging setup
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(log_level)
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(levelname)s: %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+
+        # Instance attributes
         self.filepath = filepath
         self.appledoublepath = ""
         self.entries = {}
         
-        # AppleDouble files have "._" prepended to the filename
+        # Modern AppleDouble files usually have "._" prepended to the filename
+        #  Older implementations can use "%" or "R." prefixes instead
         self.appledoublepath = os.path.join(
             os.path.dirname(filepath), 
             f"._{os.path.basename(filepath)}")
+        
+        self.logger.info(f"Checking for AppleDouble file at {self.appledoublepath}")
         if not os.path.exists(self.appledoublepath):
+            # TODO: Check for old-style "%filename" and "R.filename" as well
             raise FileNotFoundError(f"AppleDouble file not found: {self.appledoublepath}")
+        self.logger.info(f"File found at {self.appledoublepath}")
 
         with open(self.appledoublepath, "rb") as f:
             stream = KaitaiStream(BytesIO(f.read()))
             self._parse_stream(stream)
     
 
-    def _parse_stream(self, stream) -> True:
+    def _parse_stream(self, stream):
+        self.logger.debug("Starting _parse_stream()")
+
         self.magic: bytes = stream.read_bytes(4)  # returns bytes
         #self.magic: int = stream.read_u4be()    # returns integer ?
         self.version: int = stream.read_u4be()
         self.reserved: bytes = stream.read_bytes(16)
         self.num_entries: int = stream.read_u2be()
 
-        # Per kaitai.io, apple_single = 333312, apple_double = 333319
-        # Per ChatGPT, apple_double = 344064 (do not trust this)
-        # My files are all x00 x05 x16 x07 (decimal 344071) as the first 4 bytes...
+        self.logger.info(f"Found {self.num_entries}")
+        self.logger.debug(f"Magic bytes: {self.magic}")
 
-        #if self.magic != b'\x00\x05\x16\x00':  # integer 344064
-        #    raise ValueError("Not a valid AppleDouble file")
+        # Per kaitai.io, apple_double = 00 05 16 07 (decimal 333319)
+        # Per archiveteam.org, apple_double is 00 05 16 07 (same)
+        # My files are all 00 05 16 07
+
+        if self.magic != b'\x00\x05\x16\x07':
+            self.logger.warning(f"Invalid or unusual magic number: {self.magic}")
         
         for _ in range(self.num_entries):
             entry_id: int = stream.read_u4be()   # elsewhere called "type"
@@ -49,17 +70,15 @@ class AppleDoubleMetadata:
             }
         
         for eid in self.entries:
+            self.logger.debug(f"Reading entry with ID = {eid}")
             stream.seek(0)
             stream.seek(self.entries[eid]["offset"])
             data: bytes = stream.read_bytes(self.entries[eid]["length"])
             self.entries[eid]["obj"]= AppleDoubleMetadata.Entry(eid, data)
 
-        return True  # not sure this is good practice, but...
 
-
-    #class Entry(KaitaiStruct):
     class Entry:
-        # this is lifted from https://formats.kaitai.io/apple_single_double/python.html
+        # this is cribbed from https://formats.kaitai.io/apple_single_double/python.html
         # License is https://spdx.org/licenses/CC0-1.0.html
 
         class Types(IntEnum):
@@ -78,7 +97,18 @@ class AppleDoubleMetadata:
             afp_file_info = 14
             afp_directory_id = 15
         
-        def __init__(self, eid: int, data: bytes):
+        def __init__(self, eid: int, data: bytes, log_level=logging.DEBUG):
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel(log_level)
+            if not self.logger.handlers:
+                handler = logging.StreamHandler()
+                formatter = logging.Formatter('%(levelname)s: %(message)s')
+                handler.setFormatter(formatter)
+                self.logger.addHandler(handler)
+            
+            self.logger.debug(f"Creating Entry instance from ID={eid} with value\n{data}")
+
+            # Look up entry type in Types enum
             self.type = KaitaiStream.resolve_enum(
                 AppleDoubleMetadata.Entry.Types, 
                 eid
@@ -113,4 +143,4 @@ class AppleDoubleMetadata:
                 print(f"  Location: {eobj.location}")
                 print(f"  Folder ID: {eobj.folder_id}")
                 print()
-        print()
+        print() 

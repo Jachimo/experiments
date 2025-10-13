@@ -1,6 +1,7 @@
 # Processing logic for AppleDouble metadata.
 #  Ref http://kaiser-edv.de/documents/AppleSingle_AppleDouble.pdf
 
+from operator import truediv
 import kaitaistruct
 from kaitaistruct import KaitaiStruct, KaitaiStream, BytesIO
 from enum import IntEnum
@@ -103,13 +104,13 @@ class AppleDoubleMetadata:
             print(f"  Offset {self.entries[e]['offset']} (Length {self.entries[e]['length']}) ")
             print(f"  EID: {e}")
             #print(self.entries[e]["data"])
-            Eobj = self.entries[e]["obj"] # Entry object
-            print(f"  Entry Type: {Eobj.type}") # ({AppleDoubleMetadata.Entry.Types(Eobj.type)})")
-            if Eobj.type == AppleDoubleMetadata.Entry.Types.finder_info:
-                print(f"  File Type: {Eobj.file_type}")
-                print(f"  Creator: {Eobj.file_creator}")
-                print(f"  Flags: {Eobj.flags}")
-                print(f"  Location: {Eobj.location}")
-                print(f"  Folder ID: {Eobj.folder_id}")
+            eobj = self.entries[e]["obj"] # Entry object
+            print(f"  Entry Type: {eobj.type} ({AppleDoubleMetadata.Entry.Types(eobj.type).name})")
+            if eobj.type == AppleDoubleMetadata.Entry.Types.finder_info:
+                print(f"  File Type: {eobj.file_type}")
+                print(f"  Creator: {eobj.file_creator}")
+                print(f"  Flags: {eobj.flags}")
+                print(f"  Location: {eobj.location}")
+                print(f"  Folder ID: {eobj.folder_id}")
                 print()
         print()

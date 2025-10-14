@@ -19,7 +19,6 @@ class AppleDoubleMetadata:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
 
-        # Instance attributes
         self.filepath = filepath
         self.appledoublepath = ""
         self.entries = {}
@@ -53,10 +52,7 @@ class AppleDoubleMetadata:
         self.logger.info(f"Found {self.num_entries}")
         self.logger.debug(f"Magic bytes: {self.magic}")
 
-        # Per kaitai.io, apple_double = 00 05 16 07 (decimal 333319)
-        # Per archiveteam.org, apple_double is 00 05 16 07 (same)
-        # My files are all 00 05 16 07
-
+        # Per kaitai.io and ArchiveTeam, apple_double = 00 05 16 07 (decimal 333319)
         if self.magic != b'\x00\x05\x16\x07':
             self.logger.warning(f"Invalid or unusual magic number: {self.magic}")
         
@@ -88,6 +84,7 @@ class AppleDoubleMetadata:
             comment = 4
             icon_bw = 5
             icon_color = 6
+            file_info = 7
             file_dates_info = 8
             finder_info = 9
             macintosh_file_info = 10
@@ -106,24 +103,43 @@ class AppleDoubleMetadata:
                 handler.setFormatter(formatter)
                 self.logger.addHandler(handler)
             
-            self.logger.debug(f"Creating Entry instance from ID={eid} with value\n{data}")
+            self.logger.debug(f"Creating Entry instance for ID={eid}")
 
-            # Look up entry type in Types enum
-            self.type = KaitaiStream.resolve_enum(
+            # Look up entry type in Types enum and store integer to self.types
+            self.type: int = KaitaiStream.resolve_enum(
                 AppleDoubleMetadata.Entry.Types, 
                 eid
             )
 
+            self.logger.debug(f"  ID corresponds to type {AppleDoubleMetadata.Entry.Types(self.type)}")
+
+            # Special handling for finder_info entries (type 9)
             if self.type == AppleDoubleMetadata.Entry.Types.finder_info:
+                self.logger.debug(f"  Finder info entry detected, parsing subfields")
                 ds = KaitaiStream(BytesIO(data))
+                # Per Apple docs, 16B of 'Finder information' followed by 16B of extended info
+                # "the fields ioFlFndrInfo followed by ioFlXFndrInfo, as returned by the PBGetCatinfo call"
                 self.file_type = ds.read_bytes(4)
                 self.file_creator = ds.read_bytes(4)
-                self.flags = ds.read_u2be()
+                #self.flags = ds.read_u2be()
+                self.flags = ds.read_bytes(2)
                 self.location = ds.read_bytes(4)
                 self.folder_id = ds.read_u2be()
-
+            
+            # Special handling for file_info entries (type 7)
+            if self.type == AppleDoubleMetadata.Entry.Types.file_info:
+                self.logger.debug(f"  File info entry detected, parsing subfields")
+                ds = KaitaiStream(BytesIO(data))
+                # For Macintosh HFS files, the entry is 16 bytes long and consists of three long-integer dates 
+                # (create date, last modification date, and last backup date) 
+                # and a long integer containing 32 Boolean flags.
+                self.cdate_bytes = ds.read_bytes(4)
+                self.mdate_bytes = ds.read_bytes(4)
+                self.bdate_bytes = ds.read_bytes(4)
+                self.flags_bytes = ds.read_bytes(4)
 
     def dump(self):
+        from pprint import pprint
         """ Dump contents to stdout, mostly for debugging """
         print("---------------------------------")
         print(f"File Path: {self.filepath}")
@@ -131,16 +147,9 @@ class AppleDoubleMetadata:
         print(f"Number of Entries: {self.num_entries}")
         print()
         for e in self.entries:
-            print(f"  Offset {self.entries[e]['offset']} (Length {self.entries[e]['length']}) ")
             print(f"  EID: {e}")
+            print(f"  Offset {self.entries[e]['offset']} (Length {self.entries[e]['length']}) ")
             #print(self.entries[e]["data"])
             eobj = self.entries[e]["obj"] # Entry object
-            print(f"  Entry Type: {eobj.type} ({AppleDoubleMetadata.Entry.Types(eobj.type).name})")
-            if eobj.type == AppleDoubleMetadata.Entry.Types.finder_info:
-                print(f"  File Type: {eobj.file_type}")
-                print(f"  Creator: {eobj.file_creator}")
-                print(f"  Flags: {eobj.flags}")
-                print(f"  Location: {eobj.location}")
-                print(f"  Folder ID: {eobj.folder_id}")
-                print()
-        print() 
+            pprint(vars(eobj))
+            print()

@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "samba_labels", from = "src"}]
 
 [tool.poetry.scripts]
-dumpmd = "samba_labels.cli:dump_file"
+dump_file = "samba_labels.cli:dump_file"
 
 [tool.poetry.dependencies]
 python = "^3.8"

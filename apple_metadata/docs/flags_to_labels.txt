@@ -1,19 +1,14 @@
 AppleDouble "Flags" to Finder "Labels" Reference
 ================================================
 
-Finder "Labels" (colored, with customizable names per color)
-seem to be stored as "Flags" in the AppleDouble file.
+Finder "Labels" (colors) are stored as a 3-bit field
+inside the 'flags' field (16 bits), inside finder_info
+element(s).
 
-Flag values are numeric, while colors are ... colors.
+3b wide field: 0b000 -> 0b111 or 0 - 7 in decimal   
+Total of 8 values possible   
 
-    00 02    02    Gray
-    00 02    02    Gray + Yellow
-    00 04    04    Green + Red
-    00 0A    10    Yellow
-    00 0C    12    Red
-    00 0C    12    Orange + Red
-    00 0E    14    Orange
-
-Seems like multiple Labels on the Finder side may result in only
-one being preserved on the SMB share.  How it chooses to save
-one or the other isn't obvious,
+COLOR      COLORVAL
+-------------------
+Yellow     5
+Red        6

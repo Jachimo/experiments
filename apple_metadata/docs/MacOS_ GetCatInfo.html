@@ -1,0 +1,1222 @@
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=windows-1252">
+<title>MacOS: GetCatInfo</title>
+</head>
+<body bgcolor="white">
+<center><h1>The Amazing GetCatInfo</h1></center>
+<font size="4">
+(<b>Note:</b> Most of the following information (except the <a href="http://www.stazsoftware.com/">FutureBasic</a> implementations) can be found in <a href="http://dev.info.apple.com/techpubs/mac/Files/Files-2.html"><i>Inside Macintosh: Files</i></a> and in the <a href="http://dev.info.apple.com/techpubs/mac/Toolbox/Toolbox-443.html#HEADING443-0">Finder Interface</a> chapter of <a href="http://dev.info.apple.com/techpubs/mac/Toolbox/Toolbox-2.html"><i>Inside Macintosh: Macintosh Toolbox Essentials</i></a>.)
+<p>
+</p><hr>
+<center><h2>Contents</h2></center>
+<p>
+<a href="#intro">Introduction</a><br>
+<a href="#convention">Calling Convention</a><br>
+<a href="#setup">Setting up the Parameter Block's Contents</a><br>
+<a href="#determine">How GetCatInfo Determines the File or Folder</a><br>
+<a href="#examples">A Few Examples</a><br>
+<a href="#moreparm">More about the Parameter Block</a><br>
+<a href="#completeparm">A Complete Description of All the Parameters</a><br>
+</p><p>
+</p><hr>
+
+<a name="intro"><b><u>Introduction</u></b></a><br>
+If you want to find out virtually anything about a directory or a file 
+on any volume currently mounted on your Mac (including remote volumes on
+ a network that are "mounted" on your Desktop), then FN GETCATINFO is 
+probably the best way to do it.  This Toolbox function, which is also 
+known as "<a href="http://dev.info.apple.com/techpubs/mac/Files/Files-238.html#HEADING238-0">PBGetCatInfo</a>," returns a ton of information which is contained in a <b>parameter block</b>, a chunk of memory that's up to 108 bytes long.  It's similar to another Toolbox routine called "<a href="http://dev.info.apple.com/techpubs/mac/Files/Files-240.html#HEADING240-0">PBHGetFInfo</a>"
+ (which can be called in FutureBasic by using the FN HGETFILEINFO 
+function or the GET FILE INFO statement).  However, I usually prefer to 
+use FN GETCATINFO because it's more versatile, and it returns all the 
+information that "PBHGetFInfo" returns, and more.
+<p>
+
+<a name="convention"><b><u>Calling Convention</u></b></a><br>
+Before you call FN GETCATINFO from a FutureBasic program, you need to 
+set aside some area of memory that's at least 108 bytes long.  This area
+ of memory will comprise the "parameter block"; you need to put certain 
+information into the parameter block before you call FN GETCATINFO.  The
+ parameter block is also the place where FN GETCATINFO puts all of the 
+information that it returns.  If <code>pbPtr&amp;</code> is a pointer to the parameter block, then you can call FN GETCATINFO like this:
+<code></code></p><pre><code>OSErr% = FN GETCATINFO(pbPtr&amp;)
+</code></pre>
+If you want, you can define the parameter block as a 108-byte FutureBasic variable, like this:
+<code><pre>DIM pb.ioHFQElSiz   '(_ioHFQElSiz = 108)
+</pre></code>
+Then you can call FN GETCATINFO like this:
+<code><pre>OSErr% = FN GETCATINFO(@pb)
+</pre></code>
+If the call to FN GETCATINFO was successful, then the result code <code>_noErr</code> (zero) will be returned in <code>OSErr%</code>.  Result codes that indicate failure include <code>_fnfErr</code> (file not found) and <code>_nsvErr</code> (no such volume), and others.
+<p>
+You can also call FN GETCATINFO <i>asynchronously</i>.  See the <a href="#iocompletion"><code>ioCompletion</code></a> parameter for more information.
+</p><p>
+
+<a name="setup"><u><b>Setting up the parameter block's contents</b></u></a><br>
+There are four or five parameters in the parameter block that you need 
+to set correctly before you call FN GETCATINFO.  One of the parameters 
+tells FN GETCATINFO where your "completion routine" is.  You don't need 
+to concern yourself with <a href="http://dev.info.apple.com/techpubs/mac/Files/Files-299.html#MARKER-9-1483">completion routines</a> unless you intend to call FN GETCATINFO <i>asynchronously</i>.  If you intend to do that, then you need to set the <code>ioCompletion&amp;</code>
+ parameter either to the address of your completion routine, or to zero 
+(if you set it to zero, you're indicating that you don't have a 
+completion routine.  I like to use the FutureBasic constant "<code>_nil</code>" for this.)  In FutureBasic, you can use statements like the following to set the <code>ioCompletion&amp;</code> parameter:
+<code></code></p><pre><code>pb.ioCompletion&amp; = proCAddress&amp;
+</code></pre>
+- or -
+<code><pre>pbPtr&amp;.ioCompletion&amp; = procAddress&amp;
+</pre></code>
+If you call FN GETCATINFO <i>synchronously</i> (which is the usual way to call it), then the <code>ioCompletion&amp;</code> parameter is ignored, and you don't have to set it.  See the <a href="#iocompletion">description</a> of the <code>ioCompletion&amp;</code> parameter for more information about calling FN GETCATINFO asynchronously.
+<p>
+The purpose of other four input parameters is to tell FN GETCATINFO 
+exactly which file or folder you are interested in.  These parameters 
+are:
+<code></code></p><pre><code>  pb.ioNamePtr&amp;
+  pb.ioVRefNum%
+  pb.ioFDirIndex%
+  pb.ioDirID&amp;
+</code></pre>
+(You could alternatively use the "<code>pbPtr&amp;</code>" notation with these; e.g., "<code>pbPtr&amp;.ioNamePtr&amp;</code>," etc.)
+<p>
+The way these parameters are used is very versatile, but at the same 
+time somewhat complex, and deserves a thorough discussion, which we 
+present below.  It's worth noting that <i>the description in Inside Macintosh is incorrect</i> regarding the interaction of these four parameters.  The real scoop is given here.
+</p><p>
+
+<a name="determine"><b><u>How GETCATINFO determines the file or folder</u></b></a><br>
+First, let's define something called the "base directory."  (Don't look for this term in <i>Inside Macintosh</i>; I just made it up, for the purpose of this discussion.)  The "base directory" is a directory that you specify by means of the <code>ioVRefNum%</code> parameter and the <code>ioDirID&amp;</code>
+ parameter, according to rules I'll explain in a minute.  When you call 
+FN GETCATINFO, you'll be getting information about one of the following:
+</p><ul>
+<li>the base directory itself, or:</li>
+<li>an item (a file or folder) inside the base directory (at its first level), or:</li>
+<li>an item at some deeper level (e.g. within a folder within a folder...) within the base directory, or:</li>
+<li>none of the above!   There are a couple of special cases involving 
+"full" and "relative" path names, in which you retrieve information 
+about an item that's outside of the base directory.</li>
+</ul>
+The base directory is determined from the values you put into <code>ioVRefNum%</code> and <code>ioDirID&amp;</code>, according to these rules:
+<ul>
+<li>If <code>ioDirID&amp;</code> is zero, then:</li>
+  <ul type="square">
+  <li>If <code>ioVRefNum%</code> is also zero, then the base directory is the same as your current default directory.</li>
+  <li>If <code>ioVRefNum%</code> is a working directory reference number, then the base directory is that working directory.</li>
+  <li>If <code>ioVRefNum%</code> is a volume reference number, then the base directory is the root directory on the specified volume.</li>
+  <li>If <code>ioVRefNum%</code> is a drive number, then the base directory is the root directory of the volume (if any) contained in that drive.</li>
+  </ul>
+<li>If <code>ioDirID&amp;</code> is non-zero, then it's presumed to be a
+ valid directory ID number.  In this case, the base directory is the 
+directory whose ID number is <code>ioDirID&amp;</code>, on the volume specified by <code>ioVRefNum%</code>:</li>
+  <ul type="square">
+  <li>If <code>ioVRefNum%</code> is zero, then the base directory is on 
+the "default volume" (the default volume is the volume that contains the
+ current default directory).</li>
+  <li>If <code>ioVRefNum%</code> is a working directory reference number, then the base directory is on the same volume that contains that working directory.</li>
+  <li>If <code>ioVRefNum%</code> is a volume reference number, then the base directory is on the specified volume.</li>
+  <li>If <code>ioVRefNum%</code> is a drive number, then the base directory is on the volume (if any) contained in that drive.</li>
+  </ul>
+</ul>
+Okay, that's a lot to swallow, and we're not done yet.  Take a cleansing breath...exhale...good.
+<p>
+Once the base directory is determined as above, then the <code>ioNamePtr&amp;</code> and <code>ioFDirIndex%</code> parameters complete the determination of the object.  This works as follows:
+</p><ul>
+<li>If <code>ioFDirIndex%</code> is <i>positive</i>, then the string pointed to by <code>ioNamePtr&amp;</code> is ignored.  <code>ioFDirIndex%</code>
+ is then interpreted as an "index number" into the items (files and 
+folders) contained inside the base directory (at its first level).  For 
+example, if <code>ioFDirIndex%</code> is 4, then FN GETCATINFO returns 
+information about the 4th item in the base directory (the items are 
+indexed in alphabetical order by name).  If <code>ioFDirIndex%</code> exceeds the number of items in the base directory, then FN GETCATINFO returns a "file not found" (<code>_fnfErr</code>) error code.</li>
+<li>If <code>ioFDirIndex%</code> is <i>negative</i>, then the string pointed to by <code>ioNamePtr&amp;</code> is again ignored.  FN GETCATINFO returns information about the base directory itself.</li>
+<li>If <code>ioFDirIndex%</code> is <i>zero</i>, then the item is determined by <code>ioNamePtr&amp;</code>, as follows:</li>
+  <ul type="square">
+  <li>If <code>ioNamePtr&amp;</code> is nil (zero), or it's a pointer to
+ an empty (zero-length) string, then FN GETCATINFO returns information 
+about the base directory itself.</li>
+  <li>If <code>ioNamePtr&amp;</code> points to a <i>full path name</i> (that is, a string that contains one or more colons, but doesn't <i>begin</i>
+ with a colon), then the base directory is ignored, and FN GETCATINFO 
+returns information about the item specified in the path name.  Beware 
+of this method!  If perchance there are two mounted volumes which both 
+happen to have the same volume name, then using the "full path name" 
+method is ambiguous: FN GETCATINFO may or may not look inside the 
+correct volume.</li>
+  <li>If <code>ioNamePtr&amp;</code> points to a "simple name" (a 
+non-emptry string that doesn't contain any colons), then it's assumed to
+ name an item inside the base directory.  FN GETCATINFO returns 
+information about that item.</li>
+  <li>If <code>ioNamePtr&amp;</code> points to a <i>relative path name</i>
+ (a string that begins with a colon), then it's assumed to indicate an 
+item which can be reached by starting at the base directory and then 
+following the relative path.  This could indicate an item which exists 
+several directory levels deep within the base directory.  FN GETCATINFO 
+returns information about that item.  Note that there is a strange (but 
+sometimes useful) variation of the relative path name, in which the 
+string begins with <i>multiple</i> colons (with no name between them).  When the string begins with a double colon, then the relative path begins at the <i>parent</i>
+ of the base directory, rather than at the base directory itself.  when 
+the string begins with a triple colon, then the relative path begins at 
+the "grandparent" of the base directory, and so forth.  For example, you
+ can retrieve information about the base directory's parent by 
+specifying the string, "<code>::</code>".</li>
+  </ul>
+</ul>
+A word of caution: when <code>ioFDirIndex%</code> is nonzero, then the string pointed to by <code>ioNamePtr&amp;</code> is ignored, but even in that case you <i>still</i> are required to set the value of <code>ioNamePtr&amp;</code> properly before calling FN GETCATINFO.  Specifically, you must either set it to <code>_nil</code>, or set it to the address of an area of memory which can <i>receive</i> a name.  If you set it to <code>_nil</code>,
+ then FN GETCATINFO won't return any name.  If you set it to the address
+ of a string buffer, then FN GETCATINFO will return the name of the item
+ it finds into that buffer.  If you fail to explicitly set <code>ioNamePtr&amp;</code>,
+ and it happens to contain some random nonzero number, then FN 
+GETCATINFO will interpret that number as an address and will try to 
+stuff the item's name into the memory at that address.  In the worst 
+case, this could crash your computer.
+<p>
+So remember:
+</p><ul>
+<li>When <code>ioFDirIndex%</code> is zero, GetCatInfo <i>reads from</i> the buffer (if any) pointed to by <code>ioNamePtr&amp;</code>.</li>
+<li>When <code>ioFDirIndex%</code> is nonzero, GetCatInfo <i>writes to</i> the buffer (if any) pointed to by <code>ioNamePtr&amp;</code>.</li>
+</ul>
+It never does both.
+<p>
+<a name="examples"><b><u>A Few Examples</u></b></a><br>
+Because the above rules are pretty complex, a few examples are in order here.
+</p><p>
+<u>Example 1.</u>  Return information about the root directory of the 
+volume whose reference number is -1 (this is usually the startup 
+volume).  Note that the name of the root directory is just the volume's 
+name.
+<code></code></p><pre><code>DIM pb.108, 31 volName$
+pb.ioNamePtr&amp; = @volName$   	'Return volume name here.
+pb.ioVRefNum% = -1		'volume reference number.
+pb.ioFDirIndex% = -1		'Return info about dir. itself.
+pb.ioDirID&amp; = 0			'Use ioVRefNum% field alone for dir.
+OSErr% = FN GETCATINFO(@pb)
+</code></pre>
+
+<u>Example 2.</u>  Return information about the item called "MyStuff" 
+which is in the working directory whose reference number is -32544.  
+(Note: in "real life," you would virtually never use a literal constant 
+to represent a working directory reference number.)
+<pre><code>DIM pb.108, 31 itemName$
+itemName$ = "MyStuff"
+pb.ioNamePtr&amp; = @itemName$
+pb.ioVRefNum% = -32544		'working directory ref. num.
+pb.ioFDirIndex% = 0		'Refer to ioNamePtr&amp; for item.
+pb.ioDirID&amp; = 0			'Use ioVRefNum% field alone for dir.
+OSErr% = FN GETCATINFO(@pb)
+</code></pre>
+
+<u>Example 3.</u>  Return information about the current default directory.
+<pre><code>DIM pb.108, 31 itemName$
+pb.ioNamePtr&amp; = @itemName$
+pb.ioVRefNum% = 0	'Default volume.
+pb.ioFDirIndex% = -1	'Return info about dir. itself.
+pb.ioDirID&amp; = 0		'0 = default dir, when ioVRefNum is also 0.
+OSErr% = FN GETCATINFO(@pb)
+</code></pre>
+
+<u>Example 4.</u>  Return information about the root directory of the 
+current default volume.  Here we make use of the fact that every 
+volume's root directory has a directory ID of "2."
+<pre><code>DIM pb.108, 31 itemName$
+pb.ioNamePtr&amp; = @itemName$
+pb.ioVRefNum% = 0		'Default volume.
+pb.ioFDirIndex% = -1		'Return info about dir. itself.
+pb.ioDirID&amp; = 2			'2 always means "root directory".
+OSErr% = FN GETCATINFO(@pb)
+</code></pre>
+
+<u>Example 5.</u>  Return information about the 6th item in the root 
+directory of the volume currently in the floppy drive (the drive number 
+of the floppy drive is 1).
+<pre><code>DIM pb.108, 31 itemName$
+pb.ioNamePtr&amp; = @itemName$
+pb.ioVRefNum% = 1		'Drive number.
+pb.ioFDirIndex% = 6		'Return info about 6th item.
+pb.ioDirID&amp; = 0			'Use ioVRefNum% field alone for dir
+OSErr% = FN GETCATINFO(@pb)
+</code></pre>
+
+<u>Example 6.</u>  Return information about the directory whose ID is 
+105, in the volume whose reference number is -2.  Disregard the 
+directory's name.  (Note: in "real life," you would probably not use 
+literal constants to represent a volume reference number and a directory
+ ID, except in special cases.)
+<pre><code>DIM pb.108
+pb.ioNamePtr&amp; = _nil		'Don't return the item's name.
+pb.ioVRefNum% = -2		'Volume reference number.
+pb.ioFDirIndex% = -1		'Return info about dir. itself.
+pb.ioDirID&amp; = 105		'Directory ID #.
+OSErr% = FN GETCATINFO(@pb)
+</code></pre>
+
+<u>Example 7.</u>  Return information about the root directory of the 
+volume called "MacintoshHD" (hopefully, there is only one volume with 
+that name currently mounted).
+<code><pre>DIM pb.108, 31 itemName$
+itemName$ = "MacintoshHD:"	'non-leading colon makes it a full path name.
+pb.ioNamePtr&amp; = @itemName$
+pb.ioVRefNum% = 0		'Ignored when full path used.
+pb.ioFDirIndex% = 0		'Refer to ioNamePtr&amp; for item.
+pb.ioDirID&amp; = 0			'Ignored when full path used.
+OSErr% = FN GETCATINFO(@pb)
+</pre></code>
+
+There are many more possible variations on these examples, but these should give you a taste of what you can do.
+<p>
+
+<a name="moreparm"><b><u>More about the parameter block</u></b></a><br>
+When you call FN GETCATINFO, the parameter block returns slightly 
+different information depending on whether the selected item is a file 
+or a directory.  Sometimes you'll know in advance whether the item is a 
+file or a directory, but other times you may not.  After you call FN 
+GETCATINFO, you can always determine whether the returned item is a file
+ or directory by looking at bit 4 of the <code>ioFlAttrib</code> parameter that FN GETCATINFO returns.  One way to do this is as follows:
+<code></code></p><pre><code>itsADirectory = (PEEK(@pb.ioFlAttrib) AND BIT(4)) &lt;&gt; 0
+</code></pre>
+- or -
+<code><pre>itsADirectory = (PEEK(pbPtr&amp;&nbsp;+&nbsp;_ioFlAttrib) AND BIT(4)) &lt;&gt; 0
+</pre></code>
+In the above statements, <code>itsADirectory</code> will be set to <code>_zTrue</code> if the returned item is a directory, or to <code>_false</code> if the item is a file.
+<p>
+The input and output parameters for files and directories are summarized below.  A right-pointing arrow (<img src="MacOS_%20GetCatInfo_files/rtarrow.gif">) indicates an input parameter, a left-pointing arrow (<img src="MacOS_%20GetCatInfo_files/ltarrow.gif">) indicates an output parameter, and a two-headed arrow (<img src="MacOS_%20GetCatInfo_files/dblarrow.gif">) indicates a parameter which requires input and also provides output.  The first 12 bytes in the block (which precede the <code>ioCompletion&amp;</code> field) are used internally.
+</p><p>
+</p><center>
+<table border="1" width="450">
+  <tbody><tr align="center" valign="middle">
+    <td><b>Direction</b></td><td><b>Byte offset</b></td><td><b>Parameters for files</b></td><td><b>Parameters for directories</b></td><td><b>Parameter size</b></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/rtarrow.gif"></td>
+    <td align="center">12</td>
+    <td><a href="#iocompletion"><code>ioCompletion</code></a></td>
+    <td><a href="#iocompletion"><code>ioCompletion</code></a></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">16</td>
+    <td><a href="#ioresult"><code>ioResult</code></a></td>
+    <td><a href="#ioresult"><code>ioResult</code></a></td>
+    <td>integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/rtarrow.gif"></td>
+    <td align="center">18</td>
+    <td><a href="#ionameptr"><code>ioNamePtr</code></a></td>
+    <td><a href="#ionameptr"><code>ioNamePtr</code></a></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/rtarrow.gif"></td>
+    <td align="center">22</td>
+    <td><a href="#iovrefnum"><code>ioVRefNum</code></a></td>
+    <td><a href="#iovrefnum"><code>ioVRefNum</code></a></td>
+    <td>integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">24</td>
+    <td><a href="#iofrefnum"><code>ioFRefNum</code></a></td>
+    <td>&nbsp;</td>
+    <td>integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/rtarrow.gif"></td>
+    <td align="center">28</td>
+    <td><a href="#iofdirindex"><code>ioFDirIndex</code></a></td>
+    <td><a href="#iofdirindex"><code>ioFDirIndex</code></a></td>
+    <td>integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">30</td>
+    <td><a href="#ioflattrib"><code>ioFlAttrib</code></a></td>
+    <td><a href="#ioflattrib"><code>ioFlAttrib</code></a></td>
+    <td>byte</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">31</td>
+    <td><code>&nbsp;</code></td>
+    <td><a href="#ioacuser"><code>ioAcUser</code></a></td>
+    <td>byte</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">32</td>
+    <td><a href="#ioflfndrinfo"><code>ioFlFndrInfo</code></a></td>
+    <td><a href="#iodrusrwds"><code>ioDrUsrWds</code></a></td>
+    <td>16 bytes</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/dblarrow.gif"></td>
+    <td align="center">48</td>
+    <td><code><a href="#iodirid">ioDirID</a> / <a href="#fileid">File ID</a></code></td>
+    <td><code><a href="#iodirid">ioDirID</a> / <a href="#iodrdirid">ioDrDirID</a></code></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">52</td>
+    <td><a href="#ioflstblk"><code>ioFlStBlk</code></a></td>
+    <td><a href="#iodrnmfls"><code>ioDrNmFls</code></a></td>
+    <td>integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">54</td>
+    <td><a href="#iofllglen"><code>ioFlLgLen</code></a></td>
+    <td><code>&nbsp;</code></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">58</td>
+    <td><a href="#ioflpylen"><code>ioFlPyLen</code></a></td>
+    <td><code>&nbsp;</code></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">62</td>
+    <td><a href="#ioflrstblk"><code>ioFlRStBlk</code></a></td>
+    <td><code>&nbsp;</code></td>
+    <td>integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">64</td>
+    <td><a href="#ioflrlglen"><code>ioFlRLgLen</code></a></td>
+    <td><code>&nbsp;</code></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">68</td>
+    <td><a href="#ioflrpylen"><code>ioFlRPyLen</code></a></td>
+    <td><code>&nbsp;</code></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">72</td>
+    <td><a href="#ioflcrdat"><code>ioFlCrDat</code></a></td>
+    <td><a href="#iodrcrdat"><code>ioDrCrDat</code></a></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">76</td>
+    <td><a href="#ioflmddat"><code>ioFlMdDat</code></a></td>
+    <td><a href="#iodrmddat"><code>ioDrMdDat</code></a></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">80</td>
+    <td><a href="#ioflbkdat"><code>ioFlBkDat</code></a></td>
+    <td><a href="#iodrbkdat"><code>ioDrBkDat</code></a></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">84</td>
+    <td><a href="#ioflxfndrinfo"><code>ioFlXFndrInfo</code></a></td>
+    <td><a href="#iodrfndrinfo"><code>ioDrFndrInfo</code></a></td>
+    <td>16 bytes</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">100</td>
+    <td><a href="#ioflparid"><code>ioFlParID</code></a></td>
+    <td><a href="#iodrparid"><code>ioDrParID</code></a></td>
+    <td>long integer</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="MacOS_%20GetCatInfo_files/ltarrow.gif"></td>
+    <td align="center">104</td>
+    <td><a href="#ioflclpsiz"><code>ioFlClpSiz</code></a></td>
+    <td><code>&nbsp;</code></td>
+    <td>long integer</td>
+  </tr>
+</tbody></table>
+</center>
+<p>
+
+<a name="completeparm"><u><b>A Complete Description of all the Parameters</b></u></a>
+</p><p>
+<a name="iocompletion"><u><b><code>ioCompletion</code></b></u></a>
+</p><ul>
+<li>Input only.</li>
+<li>In FutureBasic, assign a value to <code>pb.ioCompletion&amp;</code>, or to <code>pbPtr&amp;.ioCompletion&amp;</code>.</li>
+</ul>
+You'll usually want to set this parameter to <code>_nil</code> (zero).  If it's not <code>_nil</code>, then it should be set to the address of a "<a href="http://dev.info.apple.com/techpubs/mac/Files/Files-299.html#MARKER-9-1483">completion routine</a>,"
+ which is a routine that you want FN GETCATINFO to automatically call 
+after it's finished getting its info about the selected item.  This is 
+really only useful in cases where you want to call FN GETCATINFO 
+"asynchronously."  Calling asynchronously means that FN GETCATINFO puts 
+the request for information onto a queue, and then returns immediately 
+to your application, possibly before the information has actually been 
+retrieved.  The system then processes the GETCATINFO request in the 
+background (as soon as it can get around to it), and meanwhile your 
+application is free to do other stuff.  When the system completes the 
+GETCATINFO request, it calls your completion routine (if you specified 
+one).  You can use the completion routine as a way to notify your 
+application that the GETCATINFO request has been processed.  (Another 
+way to check whether the request has been processed is to periodically 
+check the value of the <a href="#ioresult"><code>ioResult</code></a> parameter, as explained below.)  To call FN GETCATINFO asynchronously, call it like this:
+<code><pre>OSErr% = FN GETCATINFO _async(@pb)
+</pre></code>
+- or -
+<code><pre>OSErr% = FN GETCATINFO _async(pbPtr&amp;)
+</pre></code>
+Calling FN GETCATINFO asynchronously can be useful if you're making a 
+great number of calls, and/or you expect that it might take a while for 
+the information to be returned (as may be the case when you're 
+retrieving information about items on a remote network volume).  If you 
+do call FN GETCATINFO asynchronously, you <i>must not dispose of the parameter block</i> until the the routine completes (you can check <a href="#ioresult"><code>ioResult</code></a> periodically to determine when that happens).
+ 
+<p>
+<a name="ioresult"><b><u><code>ioResult</code></u></b></a>
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioResult%</code>, or <code>pbPtr&amp;.ioResult%.</code></li>
+</ul>
+If you're making a <i>synchronous</i> call (as normally you'd do), then <code>ioResult</code> returns the same value that <code>OSErr%</code> (the function result) returns.  But if you're making an <i>asynchronous</i> call, then <code>OSErr%</code> always returns <code>_noErr</code>.  In this case, one way to determine whether the GETCATINFO request has been processed is to periodically check the value of <code>ioResult</code>.  As long as <code>ioResult</code> contains a positive value, the request has not yet been processed.  Eventually the system will put a result code (either<code> _noErr</code> (zero), or some negative error code) into <code>ioResult</code>.  When this happens, you'll know that the GETCATINFO request has been processed.
+
+<p>
+<a name="ionameptr"><b><u><code>ioNamePtr</code></u></b></a>
+</p><ul>
+<li>Input only (but the contents of the buffer it points to may change).</li>
+<li>In FutureBasic, assign a value to <code>pb.ioNamePtr&amp;</code>, or to <code>pbPtr&amp;.ioNamePtr&amp;</code>.</li>
+</ul>
+The way this parameter is used depends on the value of the <a href="#iofdirindex"><code>ioFDirIndex</code></a> parameter.
+<ul>
+<li>If <code>ioFDirIndex</code> is zero, then <code>ioNamePtr</code> should either be set to <code>_nil</code>,
+ or it should point to a "Pascal string" (a Pascal string is a string 
+which is preceded in memory by a byte which indicates the string's 
+length.  This is the kind of string that is stored in FutureBasic string
+ variables that end with the "$" type identifier.)  The Pascal string 
+that <code>ioNamePtr</code> points to may be a "null string" (a string 
+whose length is zero), or a full or partial path name.  When you call FN
+ GETCATINFO with <code>ioFDirIndex</code> = 0, the contents of the string buffer pointed to by <code>ioNamePtr</code> don't get changed.</li>
+<li>If <code>ioFDirIndex</code> is nonzero, then <code>ioNamePtr</code> should either be set to <code>_nil</code>,
+ or it should point to a buffer in memory which is large enough to hold 
+the name of the returned item (file or folder) in Pascal string format. 
+ Typically, your "buffer" will just consist of the space reserved for a 
+FutureBasic string variable, and you'll just set <code>ioNamePtr</code> to the address of that string variable.  If <code>ioFDirIndex</code> is nonzero when you call FN GETCATINFO, then GETCATINFO will return the name of the item (file or folder) into the buffer that <code>ioNamePtr</code> points to (if any).  If you set <code>ioNamePtr</code> to <code>_nil</code>, then the item's name is not returned.</li>
+</ul>
+
+<p>
+<a name="iovrefnum"><b><u><code>ioVRefNum</code></u></b></a>
+</p><ul>
+<li>Input only.</li>
+<li>In FutureBasic, assign a value to <code>pb.ioVRefNum%</code>, or to <code>pbPtr&amp;.ioVRefNum%</code>.</li>
+</ul>
+This parameter helps (along with <a href="#iodirid"><code>ioDirID</code></a>) to determine the "base directory," as described in a <a href="#determine">previous section</a>.  FN GETCATINFO can interpret <code>ioVRefNum</code> in any of four distinct ways, depending on its value:
+<p>
+</p><center>
+<table border="1" width="400">
+  <tbody><tr align="center" valign="middle">
+    <td><b>If <code>ioVRefNum</code> is:</b></td><td><b>...it's interpreted as:</b></td>
+  </tr>
+  <tr align="left">
+    <td>zero</td><td>the default volume</td>
+  </tr>
+  <tr align="left">
+    <td>positive</td><td>a drive ID number</td>
+  </tr>
+  <tr align="left">
+    <td>in the range [-1..-16384] (?)</td><td>a volume reference number</td>
+  </tr>
+  <tr align="left">
+    <td>in the range [-16385..-32768] (?)</td><td>a working directory reference number</td>
+  </tr>
+</tbody></table>
+</center>
+
+
+<p>&nbsp;</p><p>
+<a name="iofrefnum"><b><u><code>ioFRefNum</code></u></b></a> (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioRefNum%</code>, or as <code>pbPtr&amp;.ioRefNum%</code> (note the different spelling of the parameter name in FutureBasic)</li>
+</ul>
+If any running process has the file currently open, then <code>ioFRefNum</code>
+ returns the reference number of one of the file's i/o access paths 
+(there may be more than one access path active; for example if two 
+processes are both reading the file concurrently).  If no process has 
+the file open, then <code>ioFRefNum</code> returns zero.
+
+<p>
+<a name="iofdirindex"><b><u><code>ioFDirIndex</code></u></b></a>
+</p><ul>
+<li>Input only.</li>
+<li>In FutureBasic, assign a value to <code>pb.ioFDirIndex%</code>, or to <code>pbPtr&amp;.ioFDirIndex%</code>.</li>
+</ul>
+This is one of the four parameters you use to specify which file or 
+folder you want to get information about.  If it's positive, then it's 
+interpreted as an index number which indexes the items in the "base 
+directory" .  If it's zero or negative, it has other interpretations.  
+See the section, "<a href="#determine">How GETCATINFO determines the file or folder</a>" for more information.
+
+<p>
+<a name="ioflattrib"><b><u><code>ioFlAttrib</code></u></b></a>
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>PEEK(@pb.ioFlAttrib)</code>, or as <code>PEEK(pbPtr&amp;&nbsp;+&nbsp;_ioFlAttrib)</code>.</li>
+</ul>
+The bits in this one-byte field are either called the "file attributes" 
+or the "directory attributes," depending on whether the returned item is
+ a file or a directory.
+<p>
+The bits in the "file attributes" have these meanings:
+<table border="1" width="300">
+  <tbody><tr valign="middle">
+    <td><b>Bit</b></td><td><b>Meaning</b></td>
+  </tr>
+  <tr>
+    <td>0</td><td>Set if the file is locked</td>
+  </tr>
+  <tr>
+    <td>1</td><td>Reserved</td>
+  </tr>
+  <tr>
+    <td>2</td><td>Set if resource fork is open</td>
+  </tr>
+  <tr>
+    <td>3</td><td>Set if data fork is open</td>
+  </tr>
+  <tr>
+    <td>4</td><td>Always "0" for files</td>
+  </tr>
+  <tr>
+    <td>5-6</td><td>Reserved</td>
+  </tr>
+  <tr>
+    <td>7</td><td>Set if file (either fork) is open</td>
+  </tr>
+</tbody></table>
+</p><p>
+The bits in the "directory attributes" have these meanings:
+<table border="1" width="300">
+  <tbody><tr valign="middle">
+    <td><b>Bit</b></td><td><b>Meaning</b></td>
+  </tr>
+  <tr>
+    <td>0</td><td>Set if the directory is locked*</td>
+  </tr>
+  <tr>
+    <td>1</td><td>Reserved</td>
+  </tr>
+  <tr>
+    <td>2</td><td>Set if the directory is within a shared area of the directory hierarchy**</td>
+  </tr>
+  <tr>
+    <td>3</td><td>Set if the directory is a share point that is mounted by some remote user**</td>
+  </tr>
+  <tr>
+    <td>4</td><td>Always "1" for directories</td>
+  </tr>
+  <tr>
+    <td>5</td><td>Set if the directory is a share point**</td>
+  </tr>
+  <tr>
+    <td>6-7</td><td>Reserved</td>
+  </tr>
+</tbody></table>
+</p><p>
+*Does anybody know what this means?  It's not the same as the "name locked" bit.  <a href="http://dev.info.apple.com/techpubs/mac/Files/Files-238.html#HEADING238-0"><i>Inside Macintosh</i></a> says that this bit can be set or reset by the <a href="http://dev.info.apple.com/techpubs/mac/Files/Files-242.html#HEADING242-0">PBHSetFLock</a> and <a href="http://dev.info.apple.com/techpubs/mac/Files/Files-243.html#HEADING243-0">PBHRstFLock</a>
+ functions, respectively, if the volume supports directory locking.  I 
+have so far been unable to set or reset it, nor determine what it means.
+</p><p>
+**A "share point" is a directory (or volume) on the local computer that 
+you've enabled for sharing.  A directory is "within a shared area of the
+ directory hierarchy" if it's a share point or it's somewhere inside a 
+share point.  These three bits (2, 3 and 5) will be zero (for all 
+directories) if file sharing is not currently turned on.
+</p><p>
+Probably the most popular bit in <code>ioFlAttrib</code> is bit 4, which
+ determines whether the item is a file or a directory (and hence also 
+determines how the remaining flags should be interpreted).  In 
+FutureBasic, an easy way to test whether a particular bit is set is by 
+using the <code>AND</code> operator and the <code>BIT</code> function, as in this example:
+</p><pre><code>OSErr% = FN GETCATINFO(@pb)
+attrib = PEEK(@pb.ioFlAttrib)
+itsADirectory = ((attrib AND BIT(4)) &lt;&gt; 0)
+LONG IF itsADirectory
+  itsLocked = ((attrib AND BIT(1)) &lt;&gt; 0)
+  inSharedArea = ((attrib AND BIT(2)) &lt;&gt; 0)
+  mountedSharePoint = ((attrib AND BIT(3)) &lt;&gt; 0)
+  itsASharePoint = ((attrib AND BIT(5)) &lt;&gt; 0)
+XELSE
+  itsLocked = ((attrib AND BIT(1)) &lt;&gt; 0)
+  resForkOpen = ((attrib AND BIT(2)) &lt;&gt; 0)
+  dataForkOpen = ((attrib AND BIT(3)) &lt;&gt; 0)
+  someForkOpen = ((attrib AND BIT(7)) &lt;&gt; 0)
+END IF
+</code></pre>
+
+<p>
+<a name="ioacuser"><b><u><code>ioAcUser</code></u></b></a>  (directories only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as: <code>PEEK(@pb&nbsp;+&nbsp;31)</code>, or as <code>PEEK(pbPtr&amp;&nbsp;+&nbsp;31)</code>.  (FB has no appropriate constant name for this parameter.)</li>
+</ul>
+The flags in this one-byte field provide information about the current user's access priveleges for the given directory.
+<p>
+<table border="1" width="300">
+  <tbody><tr valign="middle">
+    <td><b>Bit</b></td><td><b>Meaning</b></td>
+  </tr>
+  <tr>
+    <td>0</td><td>Set if user does not have "See Folders" privelege</td>
+  </tr>
+  <tr>
+    <td>1</td><td>Set if user does not have "See Files" privelege</td>
+  </tr>
+  <tr>
+    <td>2</td><td>Set if user does not have "Make Changes" privelege</td>
+  </tr>
+  <tr>
+    <td>3-6</td><td>Reserved</td>
+  </tr>
+  <tr>
+    <td>7</td><td>Set if user is not an owner of the directory</td>
+  </tr>
+</tbody></table>
+</p><p>
+Obviously, these flags are most meaningful when you're retrieving 
+information about a directory that's on a remote server.  If you 
+retrieve information about a local directory, and you have sharing 
+currently turned off, then FN GETCATINFO seems always to set all these 
+flags to zeros (meaning, essentially, that you're the owner and you have
+ full priveleges).  <a href="http://dev.info.apple.com/techpubs/mac/Files/Files-238.html#HEADING238-0"><i>Inside Macintosh</i></a> has this to say:
+</p><p>
+<cite>
+	"The PBGetCatInfo function returns the directory access rights in the 
+ioACUser field only for shared volumes. As a result, you should set this
+ field to 0 before calling PBGetCatInfo."
+</cite>
+</p><p>
+However, my experiments seem to indicate that a value is output to <code>ioAcUser</code> even when the volume in question is not shared.  Go figure.
+</p><p>
+In FutureBasic, an easy way to test whether a particular bit is set is by using the <code>AND</code> operator and the <code>BIT</code> function, as in this example:
+<code></code></p><pre><code>OSErr% = FN GETCATINFO(@pb)
+ioAcUser = PEEK(@pb + 31)
+'test whether bit "n" of ioAcUser is set:
+bitIsSet = ((ioAcUser AND BIT(n)) &lt;&gt; 0)
+</code></pre>
+
+<p>
+<a name="ioflfndrinfo"><code><u><b>ioFlFndrInfo</b></u></code></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, you access the various fields of <code>ioFlFndrInfo</code> in various ways, as explained below.  The FutureBasic constant <code>_ioFlFndrInfo</code> does not give the correct offset to this parameter: use the constant <code>_ioFlUsrWds</code> instead.</li>
+</ul>
+<code>ioFlFndrInfo</code> is a record of type "<a href="http://dev.info.apple.com/techpubs/mac/Toolbox/Toolbox-464.html#HEADING464-0"><code>FInfo</code></a>," and contains 16 bytes of "Finder Information" about the file.  The fields of the <code>FInfo</code> record are described below.
+<ul>
+<li><code><u>fdType.</u></code>  In FutureBasic, access this field as <code>pb.ioFlUsrWds.fdType&amp;</code>, or as <code>pbPtr&amp;.ioFlUsrWds.fdType&amp;</code>.
+  This field contains the 4-byte file type.  Note that this is not 
+stored as a string: if you want to get the string equivalent of the file
+ type, do this:
+<code><pre>DEFSTR LONG
+typeString$ = MKI$(pb.ioFlUsrWds.fdType&amp;)
+</pre></code>
+</li>
+<li><code><u>fdCreator.</u></code>  In FutureBasic, access this field as <code>pb.ioFlUsrWds.fdCreator&amp;</code>, or as <code>pbPtr&amp;.ioFlUsrWds.fdCreator&amp;</code>.
+  This field contains the file's 4-byte creator signature.  Note that 
+this is not stored as a string: if you want to get the string equivalent
+ of the creator signature, do this:
+<code><pre>DEFSTR LONG
+creatorString$ = MKI$(pb.ioFlUsrWds.fdCreator&amp;)
+</pre></code>
+</li>
+<li><code><u>fdFlags.</u></code>  In FutureBasic, access this field as <code>pb.ioFlUsrWds.fdFlags%</code>, or as <code>pbPtr&amp;.ioFlUsrWds.fdFlags%</code>.
+  This field contains the "Finder flags," a collection of flags (most of
+ which consist of 1 bit) which have the following meanings:
+<p>
+<table border="1" width="500">
+  <tbody><tr valign="middle">
+    <td><b>Bits</b></td><td><b>Meaning</b></td>
+  </tr>
+  <tr valign="top">
+    <td>0</td><td>Reserved</td>
+  </tr>
+  <tr valign="top">
+    <td>1-3</td><td>3 bits of color coding; a number in the range 0..7, 
+indicating the color &amp; label as set by the Finder's "Label" menu (or
+ the "Label" option in the "File" menu).</td>
+  </tr>
+  <tr valign="top">
+    <td>4-5</td><td>Reserved</td>
+  </tr>
+  <tr valign="top">
+    <td>6</td><td>"isShared"--If set, the file is an application which 
+can be used by multiple users simultaneously.  (Should always be "0" for
+ files which aren't applications.)</td>
+  </tr>
+  <tr valign="top">
+    <td>7</td><td>"hasNoINITs"--If set, the file contains no INIT resources.</td>
+  </tr>
+  <tr valign="top">
+    <td>8</td><td>"hasBeenInited"--If set, the Finder has recorded 
+information from the file's bundle resource into the desktop database 
+and given the file a position on the desktop.</td>
+  </tr>
+  <tr valign="top">
+    <td>9</td><td>Reserved</td>
+  </tr>
+  <tr valign="top">
+    <td>10</td><td>"hasCustomIcon"--If set, the file contains a customized icon.</td>
+  </tr>
+  <tr valign="top">
+    <td>11</td><td>"isStationery"--If set, the file is a stationery pad.</td>
+  </tr>
+  <tr valign="top">
+    <td>12</td><td>"nameLocked"--If set, the file can't be renamed from the Finder, and the icon cannot be changed.</td>
+  </tr>
+  <tr valign="top">
+    <td>13</td><td>"hasBundle"--If set, the file contains a bundle ("BNDL") resource.</td>
+  </tr>
+  <tr valign="top">
+    <td>14</td><td>"isInvisible"--If set, the file is invisible from the Finder and from the Standard File Package dialog boxes.  (But note it's <i>visible</i> using FutureBasic's <code>FILES$(_fOpen,...)</code> function.)</td>
+  </tr>
+  <tr valign="top">
+    <td>15</td><td>"isAlias"--If set, the file is an alias.</td>
+  </tr>
+</tbody></table>
+</p><p>
+In FutureBasic, you can access the 1-byte flags of <code>fdFlags</code> by using the <code>AND</code> operator and the <code>BIT</code> function.  For example, to test whether bit "n" is set, do this:
+<code></code></p><pre><code>bitIsSet = (pb.ioFlUsrWds.fdFlags% AND BIT(n)) &lt;&gt; 0)
+</code></pre>
+You can access the 3-bit "color coding" field (bits 1-3) as follows:
+<code><pre>colorCode = (pb.ioFlUsrWds.fdFlags% AND 14) &gt;&gt; 1
+</pre></code>
+</li>
+<li><code><u>fdLocation.</u></code>  This is a field of type "point."  
+It represents the location of the file's icon in its parent directory's 
+Finder window (in the window's local coordinates).  In FutureBasic, you 
+can access the entire field (4 bytes) as <code>pb.ioFlUsrWds.fdLocation&amp;</code>, or as <code>pbPtr&amp;.ioFlUsrWds.fdLocation&amp;</code>.  If you want to access the individual horizontal and vertical components of this point, you can use <code>pb.ioFlUsrWds.fdLocation.h%</code> (or <code>pbPtr&amp;.ioFlUsrWds.fdLocation.h%</code>) for the horizontal component, and <code>pb.ioFlUsrWds.fdLocation.v%</code> (or <code>pbPtr&amp;.ioFlUsrWds.fdLocation.v%</code>) for the vertical component.
+</li>
+<p>
+</p><li><code><u>fdFldr.</u></code>  In FutureBasic, access this field as <code>pb.ioFlUsrWds.fdFldr%</code>, or as <code>pbPtr&amp;.ioFlUsrWds.fdFldr%</code>.
+  This is an ID number indicating the window in which the file's icon 
+appears; this information is meaningful only to the Finder.  
+(FutureBasic users:  this is in no way related to the Window ID numbers 
+that you assign when you open windows in FB programs.)
+</li></ul>
+
+<p>
+<a name="iodrusrwds"><b><u><code>ioDrUsrWds</code></u></b></a>  (directories only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, you access the various fields of <code>ioDrUsrWds</code> in various ways, as explained below.</li>  
+</ul>
+<code>ioDrUsrWds</code> is a record of type "<a href="http://dev.info.apple.com/techpubs/mac/Toolbox/Toolbox-466.html#HEADING466-0"><code>DInfo</code></a>," and contains 16 bytes of "Finder Information" about the folder.  The fields of the <code>DInfo</code> record are described below.
+<ul>
+<li><code><u>frRect.</u></code>  This is an 8-byte field of type "rect" 
+(rectangle).  In FutureBasic, you can copy it to a variable which is 
+DIM'ed as an 8-byte record, as follows:
+<code><pre>myRect;8 = @pb.ioDrUsrWds.frRect
+</pre></code>
+or:
+<code><pre>myRect;8 = pbPtr&amp;&nbsp;+&nbsp;_ioDrUsrWds&nbsp;+&nbsp;_frRect
+</pre></code>
+You can also access the individual "sides" of the rectangle as follows:
+<code><pre>pb.ioDrUsrWds.frRect.top%
+pb.ioDrUsrWds.frRect.left%
+pb.ioDrUsrWds.frRect.bottom%
+pb.ioDrUsrWds.frRect.right%
+</pre></code>
+(Alternatively, you can use the <code>pbPtr&amp;</code> sytax.)  The <code>frRect</code>
+ field indicates the rectangle (in global coordinates) of this folder's 
+Finder window (that is, the window that opens when the user 
+double-clicks the folder's icon).
+</li>
+<p>
+</p><li><code><u>frFlags.</u></code>  In FutureBasic, access this field as <code>pb.ioDrUsrWds.frFlags%</code>, or as <code>pbPtr&amp;.ioDrUsrWds.frFlags%</code>.
+  This field contains the "Finder flags," a collection of flags (most of
+ which consist of 1 bit) which have the following meanings:
+<p>
+<table border="1" width="500">
+  <tbody><tr valign="middle">
+    <td><b>Bits</b></td><td><b>Meaning</b></td>
+  </tr>
+  <tr valign="top">
+    <td>0</td><td>Reserved</td>
+  </tr>
+  <tr valign="top">
+    <td>1-3</td><td>3 bits of color coding; a number in the range 0..7, 
+indicating the color &amp; label as set by the Finder's "Label" menu (or
+ the "Label" option in the "File" menu).</td>
+  </tr>
+  <tr valign="top">
+    <td>4-9</td><td>Reserved</td>
+  </tr>
+  <tr valign="top">
+    <td>10</td><td>"hasCustomIcon"--If set, the folder uses a cusotmized
+ icon.  (The customized icon is stored in an invisible resource file 
+within the folder.)</td>
+  </tr>
+  <tr valign="top">
+    <td>11</td><td>Reserved</td>
+  </tr>
+  <tr valign="top">
+    <td>12</td><td>"nameLocked"--If set, the folder can't be renamed from the Finder, and the icon cannot be changed.</td>
+  </tr>
+  <tr valign="top">
+    <td>13</td><td>Reserved</td>
+  </tr>
+  <tr valign="top">
+    <td>14</td><td>"isInvisible"--If set, the folder is invisible from the Finder and from the Standard File Package dialog boxes.  (But note it's <i>visible</i> using FutureBasic's <code>FILES$(_fOpen,...)</code> function.)</td>
+  </tr>
+  <tr valign="top">
+    <td>15</td><td>Reserved</td>
+  </tr>
+</tbody></table>
+</p><p>
+In FutureBasic, you can access the 1-byte flags of <code>frFlags</code> by using the <code>AND</code> operator and the <code>BIT</code> function.  For example, to test whether bit "n" is set, do this:
+</p><pre><code>bitIsSet = (pb.ioDrUsrWds.frFlags% AND BIT(n)) &lt;&gt; 0)
+</code></pre>
+You can access the 3-bit "color coding" field (bits 1-3) as follows:
+<pre><code>colorCode = (pb.ioDrUsrWds.frFlags% AND 14) &gt;&gt; 1
+</code></pre>
+</li>
+<li><code><u>frLocation.</u></code>  This field is of type "point."  It 
+represents the location of the folder's icon in its parent directory's 
+Finder window (in the window's local coordinates).  In FutureBasic, you 
+can access the entire field (4 bytes) as <code>pb.ioDrUsrWds.frLocation&amp;</code>, or as <code>pbPtr&amp;.ioDrUsrWds.frLocation&amp;</code>.  If you want to access the individual horizontal and vertical components of this point, you can use <code>pb.ioDrUsrWds.frLocation.h%</code> (or <code>pbPtr&amp;.ioDrUsrWds.frLocation.h%</code>) for the horizontal component, and <code>pb.ioDrUsrWds.frLocation.v%</code> (or <code>pbPtr&amp;.ioDrUsrWds.frLocation.v%</code>) for the vertical component.
+</li>
+<p>
+</p><li><code><u>frView.</u></code>  In FutureBasic, access this field as <code>pb.ioDrUsrWds.frView%</code>, or as <code>pbPtr&amp;.ioDrUsrWds.frView%</code>.
+  This field indicates the manner in which the folder's Finder window is
+ displayed, as set by the various options in the Finder's "View" menu.  I
+ couldn't find any documentation regarding the interpretation of <code>frView</code>, but my experiments indicate that its bits have the following meanings:
+<p>
+<table border="1" width="300">
+  <tbody><tr valign="middle">
+    <td><b>Bits</b></td><td><b>Meaning</b></td>
+  </tr>
+  <tr valign="top">
+    <td>0-6</td><td>Reserved</td>
+  </tr>
+  <tr valign="top">
+    <td>7</td>
+    <td>If viewing by icon: 1="by small icon"; 0="by large icon."<br>
+          If not viewing by icon, this bit should be ignored.</td>
+  </tr>
+  <tr valign="top">
+    <td>8-11</td>
+    <td>View/Sort:<br>
+      1 = by icon<br>
+      2 = by name<br>
+      3 = by date<br>
+      4 = by size<br>
+      5 = by kind<br>
+      6 = by comments<br>
+      7 = by label<br>
+      8 = by version
+    </td>
+  </tr>
+  <tr valign="top">
+    <td>12-15</td><td>Reserved</td>
+  </tr>
+</tbody></table>
+</p><p>
+Note for MacOS 8.x users: <code>frView</code> apparently does not indicate any difference between the "Icon" view and the "Button" view (in both cases, Bits 8-11 are set to <code>0001</code>).  I don't know where the "Icon vs. Button" information is stored.
+</p><p>
+You can access the bit fields of <code>frView</code> as follows:
+</p><pre><code>viewType = (pb.ioDrUsrWds.frView% AND &amp;0F00) &gt;&gt; 8
+LONG IF viewType = 1
+  'iconSize = 1 if small, or 0 if large:
+  iconSize = (pb.ioDrUsrWds.frView% AND BIT(7)) &gt;&gt; 7
+END IF
+</code></pre>
+</li></ul>
+
+<p>
+<a name="iodirid"><b><u><code>ioDirID</code></u></b></a>
+</p><ul>
+<li>Input/Output.  See <a href="#fileid"><code>File ID</code></a> and <a href="#iodrdirid"><code>ioDrDirID</code></a> for the output values of this parameter.</li>
+<li>In FutureBasic, assign a value to <code>pb.ioDirID&amp;</code>, or to <code>pbPtr&amp;.ioDirID&amp;</code>.</li>  
+</ul>
+On input, this parameter is used (along with <a href="#iovrefnum"><code>ioVRefNum</code></a>) to determine the "base directory," as described in a <a href="#determine">previous section</a>.
+  Because FN GETCATINFO changes the contents of these bytes on output, 
+you must be careful to reset this parameter to the correct value before 
+you use this same parameter block again.
+
+<p>
+<a name="fileid"><b><u><code>File ID</code></u></b></a>  (files only)
+</p><ul>
+<li>Input/Output.  See <a href="#iodirid"><code>ioDirID</code></a> for the input value of this parameter.</li>
+<li>In FutureBasic, read it as <code>pb.ioFFlNum&amp;</code>, or as <code>pbPtr&amp;.ioFFlNum&amp;</code>.</li>  
+</ul>
+On output, this parameter contains the "File ID" number for the file.  
+Every file on a given volume has a unique File ID number which is 
+assigned to it by the MacOS when the file is created, and which doesn't 
+change even if the file is renamed or moved to a different folder.  It's
+ analogous to the "Directory ID" number that directories have.  The 
+Alias Manager uses File ID numbers internally, to help keep track of a 
+file by means of its alias.  Since you can't directly search for files 
+based on their File ID number, your program probably won't have much use
+ for this parameter.
+
+<p>
+<a name="iodrdirid"><b><u><code>ioDrDirID</code></u></b></a>  (directories only)
+</p><ul>
+<li>Input/Output.  See <a href="#iodirid"><code>ioDirID</code></a> for the input value of this parameter.</li>
+<li>In FutureBasic, read it as <code>pb.ioDrDirID&amp;</code>, or as <code>pbPtr&amp;.ioDrDirID&amp;</code>.</li>  
+</ul>
+On output, this parameter contains the Directory ID number for the 
+directory.  Depending on how you set up the input parameters, this value
+ may or may not be the same number that you put into <a href="#iodirid"><code>ioDirID</code></a> when you called FN GETCATINFO.  Note that the directory ID of a volume's <i>root</i> directory is always "2."
+
+<p>
+<a name="ioflstblk"><b><u><code>ioFlStBlk</code></u></b></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlStBlk%</code>, or as <code>pbPtr&amp;.ioFlStBlk%</code>.</li>  
+</ul>
+<a href="http://dev.info.apple.com/techpubs/mac/Files/Files-118.html#MARKER-9-918"><i>Inside Macintosh</i></a>
+ claims that this parameter contains the block number of the first 
+allocation block of the file's data fork, and that this value will be 
+zero if the file's data fork is empty.  However, I think this is 
+unreliable; In my tests, this parameter <i>always</i> returns zero, for all files.
+
+<p>
+<a name="iodrnmfls"><b><u><code>ioDrNmFls</code></u></b></a>  (directories only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioDrNmFls%</code>, or as <code>pbPtr&amp;.ioDrNmFls%</code>.</li>  
+</ul>
+The number of items (files and directories) within the directory's first level.
+
+<p>
+<a name="iofllglen"><b><u><code>ioFlLgLen</code></u></b></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlLgLen&amp;</code>, or as <code>pbPtr&amp;.ioFlLgLen&amp;</code>.</li>  
+</ul>
+This returns the "logical length" of the file's data fork (i.e., the 
+number of bytes of data in the fork).  This is the same as the number 
+returned by FutureBasic's <code>LOF(<i>fileID</i>, 1)</code> function.
+
+<p>
+<a name="ioflpylen"><b><u><code>ioFlPyLen</code></u></b></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlPyLen&amp;</code>, or as <code>pbPtr&amp;.ioFlPyLen&amp;</code>.</li>  
+</ul>
+This returns the "physical length" of the file's data fork.  This is the
+ number of bytes that the data fork actually occupies on disk; it's 
+always a multiple of the disk's "allocation block size," and it's always
+ greater than or equal to the <a href="#iofllglen"><code>ioFlLgLen</code></a> value.  If <code>ioFlPyLen</code> is zero, then the file doesn't have a data fork.  To determine the total amount of disk space used by the file, add <code>ioFlPyLen</code> to <a href="#ioflrpylen"><code>ioFlRPyLen</code></a>.
+
+<p>
+<a name="ioflrstblk"><b><u><code>ioFlRStBlk</code></u></b></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlRStBlk%</code>, or as <code>pbPtr&amp;.ioFlRStBlk%</code>.</li>  
+</ul>
+<a href="http://dev.info.apple.com/techpubs/mac/Files/Files-118.html#MARKER-9-918"><i>Inside Macintosh</i></a>
+ claims that this parameter contains the block number of the first 
+allocation block of the file's resource fork.  However, I think this is 
+unreliable; In my tests, this parameter <i>always</i> returns zero, for all files.
+
+<p>
+<a name="ioflrlglen"><b><u><code>ioFlRLgLen</code></u></b></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlRLgLen&amp;</code>, or as <code>pbPtr&amp;.ioFlRLgLen&amp;</code>.</li>  
+</ul>
+This returns the "logical length" of the file's resource fork (i.e., the number of bytes of data in the fork).
+
+<p>
+<a name="ioflrpylen"><b><u><code>ioFlRPyLen</code></u></b></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlRPyLen&amp;</code>, or as <code>pbPtr&amp;.ioFlRPyLen&amp;</code>.</li>  
+</ul>
+This returns the "physical length" of the file's resource fork.  This is
+ the number of bytes that the resource fork actually occupies on disk; 
+it's always a multiple of the disk's "allocation block size," and it's 
+always greater than or equal to the <a href="#ioflrlglen"><code>ioFlRLgLen</code></a> value.  If <code>ioFlRPyLen</code> is zero, then the file doesn't have a resource fork.  To determine the total amount of disk space used by the file, add <a href="#ioflpylen"><code>ioFlPyLen</code></a> to <code>ioFlRPyLen</code>.
+
+<p>
+<a name="ioflcrdat"><b><u><code>ioFlCrDat</code></u></b></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlCrDat&amp;</code>, or as <code>pbPtr&amp;.ioFlCrDat&amp;</code>.</li>  
+</ul>
+The date and time of the file's creation, specified in seconds since midnight, January 1, 1904.  You can pass this value to the <a href="http://dev.info.apple.com/techpubs/mac/OSUtilities/OSUtilities-113.html#HEADING113-0">SecondsToDate</a> function (in FutureBasic, CALL SECS2DATE), to get the individual elements of the date and time. 
+
+<p>
+<a name="iodrcrdat"><b><u><code>ioDrCrDat</code></u></b></a>  (directories only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioDrCrDat&amp;</code>, or as <code>pbPtr&amp;.ioDrCrDat&amp;</code>.</li>  
+</ul>
+The date and time of the directory's creation, specified in seconds 
+since midnight, January 1, 1904.  You can pass this value to the <a href="http://dev.info.apple.com/techpubs/mac/OSUtilities/OSUtilities-113.html#HEADING113-0">SecondsToDate</a> function (in FutureBasic, CALL SECS2DATE), to get the individual elements of the date and time. 
+
+<p>
+<a name="ioflmddat"><b><u><code>ioFlMdDat</code></u></b></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlMdDat&amp;</code>, or as <code>pbPtr&amp;.ioFlMdDat&amp;</code>.</li>  
+</ul>
+The date and time of the latest modification to the file, specified in 
+seconds since midnight, January 1, 1904.  You can pass this value to the
+ <a href="http://dev.info.apple.com/techpubs/mac/OSUtilities/OSUtilities-113.html#HEADING113-0">SecondsToDate</a> function (in FutureBasic, CALL SECS2DATE), to get the individual elements of the date and time. 
+
+<p>
+<a name="iodrmddat"><b><u><code>ioDrMdDat</code></u></b></a>  (directories only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioDrMdDat&amp;</code>, or as <code>pbPtr&amp;.ioDrMdDat&amp;</code>.</li>  
+</ul>
+The date and time of the latest modification to the directory, specified
+ in seconds since midnight, January 1, 1904.  You can pass this value to
+ the <a href="http://dev.info.apple.com/techpubs/mac/OSUtilities/OSUtilities-113.html#HEADING113-0">SecondsToDate</a> function (in FutureBasic, CALL SECS2DATE), to get the individual elements of the date and time. 
+
+<p>
+<a name="ioflbkdat"><b><u><code>ioFlBkDat</code></u></b></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlBkDat&amp;</code>, or as <code>pbPtr&amp;.ioFlBkDat&amp;</code>.</li>  
+</ul>
+The date and time of the last backup of the file, specified in seconds 
+since midnight, January 1, 1904.  You can pass this value to the <a href="http://dev.info.apple.com/techpubs/mac/OSUtilities/OSUtilities-113.html#HEADING113-0">SecondsToDate</a> function (in FutureBasic, CALL SECS2DATE), to get the individual elements of the date and time. 
+
+<p>
+<a name="iodrbkdat"><b><u><code>ioDrBkDat</code></u></b></a>  (directories only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioDrBkDat&amp;</code>, or as <code>pbPtr&amp;.ioDrBkDat&amp;</code>.</li>  
+</ul>
+The date and time of the last backup of the directory, specified in 
+seconds since midnight, January 1, 1904.  You can pass this value to the
+ <a href="http://dev.info.apple.com/techpubs/mac/OSUtilities/OSUtilities-113.html#HEADING113-0">SecondsToDate</a> function (in FutureBasic, CALL SECS2DATE), to get the individual elements of the date and time.
+
+<p>
+<a name="ioflxfndrinfo"><code><u><b>ioFlXFndrInfo</b></u></code></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, you access the various fields of <code>ioFlXFndrInfo</code> in various ways, as explained below.
+</li></ul>
+<code>ioFlXFndrInfo</code> is a record of type "<a href="http://dev.info.apple.com/techpubs/mac/Toolbox/Toolbox-465.html#HEADING465-0"><code>FXInfo</code></a>," and contains 16 bytes of "Extended Finder Information" about the file.  The fields of the <code>FXInfo</code> record are described below.
+<ul>
+<li><code><u>fdIconID.</u></code>  In FutureBasic, access this field as <code>pb.ioFlXFndrInfo.fdIconID%</code>, or as <code>pbPtr&amp;.ioFlXFndrInfo.fdIconID%</code>.  This is an ID number for the file's icon; the numbers that identify icons are assigned by the Finder.</li>
+<p>
+</p><li><code><u>fdUnused.</u></code>  This contains 6 reserved bytes.  If you want to look at them in FutureBasic, use the expression <code>@pb.ioFlXFndrInfo.fdUnused</code>, or <code>pbPtr&amp;&nbsp;+&nbsp;_ioFlXFndrInfo&nbsp;+&nbsp;_fdUnused</code>, as a pointer to the first of these bytes.</li>
+<p>
+</p><li><code><u>fdScript.</u></code>  In FutureBasic, access this field as <code>PEEK(@pb.ioFlXFndrInfo.fdScript)</code>, or as <code>PEEK(pbPtr&amp;&nbsp;+&nbsp;_ioFlXFndrInfo&nbsp;+&nbsp;_fdScript)</code>.
+  This byte indicates the script system for displaying the file's name. 
+Ordinarily, the Finder (and the Standard File Package) displays the 
+names of all desktop objects in the system script, which depends on the 
+region-specific configuration of the system. The high bit of the byte in
+ the <code>fdScript</code> field is set by default to 0, which causes 
+the Finder to display the filename in the current system script. If the 
+high bit is set to 1, the Finder (and the Standard File Package) 
+displays the filename and directory name in the script whose code is 
+recorded in the remaining 7 bits.  See <a href="#frscript"><code>ioDrFndrInfo.frScript</code></a> for additional information.</li>
+<p>
+</p><li><code><u>fdXFlags.</u></code> This 1-byte field is reserved.  If you want to look at it in FutureBasic, use <code>PEEK(@pb.ioFlXFndrInfo.fdXFlags)</code>, or <code>PEEK(pbPtr&amp;&nbsp;+&nbsp;_ioFlXFndrInfo&nbsp;+&nbsp;_fdXFlags)</code>.</li>
+<p>
+</p><li><code><u>fdComment.</u></code>  In FutureBasic, access this field as <code>pb.ioFlXFndrInfo.fdComment%</code>, or as <code>pbPtr&amp;.ioFlXFndrInfo.fdComment%</code>.
+  This is an ID number for the comment that is displayed in the 
+information window when the user selects a file and chooses the Get Info
+ command from the File menu. The numbers that identify comments are 
+assigned by the Finder.</li>
+<p>
+</p><li><code><u>fdPutAway.</u></code>  In FutureBasic, access this field as <code>pb.ioFlXFndrInfo.fdPutAway&amp;</code>, or as <code>pbPtr&amp;.ioFlXFndrInfo.fdPutAway&amp;</code>.
+  If the user has moved the file into the Trash, or from a folder onto 
+the Desktop, this field contains the directory ID of the folder from 
+which the user moved the file.</li>
+</ul>
+
+<p>
+<a name="iodrfndrinfo"><code><u><b>ioDrFndrInfo</b></u></code></a>  (directories only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, you access the various fields of <code>ioDrFndrInfo</code> in various ways, as explained below.</li>
+</ul>
+<code>ioDrFndrInfo</code> is a record of type "<a href="http://dev.info.apple.com/techpubs/mac/Toolbox/Toolbox-467.html#HEADING467-0"><code>DXInfo</code></a>," and contains 16 bytes of "Extended Finder
+Information" about the directory. The fields of the <code>DXInfo</code> record are described below. 
+<ul>
+<li><code><u>frScroll.</u></code>  This field indicates the current 
+positions of the horizontal and vertical scroll bars in the directory's 
+Finder window (these values may not update immediately after the user 
+adjusts the scroll bars).  In FutureBasic, you can access the horizontal
+ scroll bar position as <code>pb.ioDrFndrInfo.frScroll.h%</code>, or as <code>pbPtr&amp;.ioDrFndrInfo.frScroll.h%</code>.  You can access the vertical scroll bar position as <code>pb.ioDrFndrInfo.frScroll.v%</code>, or as <code>pbPtr&amp;.ioDrFndrInfo.frScroll.v%</code>.</li>
+<p>
+ </p><li><code><u>frOpenChain.</u></code>  In FutureBasic, access this field as <code>pb.ioDrFndrInfo.frOpenChain&amp;</code>, or as <code>pbPtr&amp;.ioDrFndrInfo.frOpenChain&amp;</code>.  According to <a href="http://dev.info.apple.com/techpubs/mac/Toolbox/Toolbox-467.html#HEADING467-0"><i>Inside Macintosh</i></a>,
+ this field represents a "chain of directory ID's for open folders."  
+I've not been able to figure out what this means: the field does not 
+contain a directory ID, nor does it contain a pointer to any valid 
+address.</li>
+<p>
+</p><li><a name="frscript"><code><u>frScript.</u></code></a>  In FutureBasic, access this field as <code>PEEK(@pb.ioDrFndrInfo.frScript)</code>, or as <code>PEEK(pbPtr&amp;&nbsp;+&nbsp;_ioDrFndrInfo&nbsp;+&nbsp;_frScript)</code>.
+  This byte indicates the script system for displaying the folder's 
+name. Ordinarily, the Finder (and the Standard File Package) displays 
+the names of all desktop objects in the system script, which depends on 
+the region-specific configuration of the system. The high bit of the 
+byte in the <code>frScript</code> field is set by default to 0, which 
+causes the Finder to display the folder's name in the current system 
+script. If the high bit is set to 1, the Finder (and the Standard File 
+Package) displays the filename and directory name in the script whose 
+code is recorded in the remaining 7 bits.  <a href="http://dev.info.apple.com/techpubs/mac/Toolbox/Toolbox-467.html#HEADING467-0"><i>Inside Macintosh</i></a> also has this to say:
+<p>
+<cite>However, as of system software version 7.1, the Window Manager and
+ Dialog Manager do not support multiple simultaneous scripts, so the 
+system script is always used for displaying filenames and directory 
+names in dialog boxes, window titles, and other user interface elements 
+used by the Finder. Therefore, until the system software's script 
+capability is fully implemented, you should treat this field as 
+reserved.</cite></p></li>
+<p>
+</p><li><code><u>frXFlags.</u></code> This 1-byte field is reserved.  If you want to look at it in FutureBasic, use <code>PEEK(@pb.ioDrFndrInfo.frXFlags)</code>, or <code>PEEK(pbPtr&amp;&nbsp;+&nbsp;_ioDrFndrInfo&nbsp;+&nbsp;_frXFlags)</code>.</li>
+<p>
+</p><li><code><u>frComment.</u></code>  In FutureBasic, access this field as <code>pb.ioDrFndrInfo.frComment%</code>, or as <code>pbPtr&amp;.ioDrFndrInfo.frComment%</code>.
+  This is an ID number for the comment that is displayed in the 
+information window when the user selects a folder and chooses the Get 
+Info command from the File menu. The numbers that identify comments are 
+assigned by the Finder.</li>
+<p>
+</p><li><code><u>frPutAway.</u></code>  In FutureBasic, access this field as <code>pb.ioDrFndrInfo.frPutAway&amp;</code>, or as <code>pbPtr&amp;.ioDrFndrInfo.frPutAway&amp;</code>.
+  If the user has moved the folder out of some parent folder and into 
+the Trash, or onto the Desktop, this field contains the directory ID of 
+the parent folder from which the user moved the folder.</li>
+</ul>
+
+<p>
+<a name="ioflparid"><code><u><b>ioFlParID</b></u></code></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlParID&amp;</code>, or as <code>pbPtr&amp;.ioFlParID&amp;</code>.</li>
+</ul>
+The directory ID of the file's parent directory.
+
+<p>
+<a name="iodrparid"><code><u><b>ioDrParID</b></u></code></a>  (directories only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioDrParID&amp;</code>, or as <code>pbPtr&amp;.ioDrParID&amp;</code>.</li>
+</ul>
+The directory ID of the specified directory's <i>parent</i>.  Note that if you're getting information about some volume's <i>root</i> directory, that directory doesn't really have a "parent"--in that case, the value "1" is returned in <code>ioDrParID</code>.
+  The value "1" is a "pseudo" directory ID which always means "the 
+parent of the root directory."  There is never any real directory which 
+has that ID number.
+
+<p>
+<a name="ioflclpsiz"><code><u><b>ioFlClpSiz</b></u></code></a>  (files only)
+</p><ul>
+<li>Output only.</li>
+<li>In FutureBasic, read it as <code>pb.ioFlClpSiz&amp;</code>, or as <code>pbPtr&amp;.ioFlClpSiz&amp;</code>.</li>
+</ul>
+The <a href="http://dev.info.apple.com/techpubs/mac/Files/Files-15.html#HEADING15-0">clump size</a> to be used when writing the file; if it's 0, the volume's clump size is used when the file is opened.
+</font>
+
+<hr size="4">
+<a href="https://rbrown.incolor.com/tutorials/index.htm#tutorials"><img src="MacOS_%20GetCatInfo_files/morebtn.gif" border="0"></a>
+
+
+
+</body></html>

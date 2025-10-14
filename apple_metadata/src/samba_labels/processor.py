@@ -95,6 +95,14 @@ class AppleDoubleMetadata:
             afp_directory_id = 15
         
         def __init__(self, eid: int, data: bytes, log_level=logging.DEBUG):
+            self.type: int = 0
+            self.file_type: bytes = bytes(0)
+            self.file_creator: bytes = bytes(0)
+            self.flags: bytes = bytes(0)
+            self.location: bytes = bytes(0)
+            self.folder_id: int = 0
+            self.finder_colorval: int = 0
+
             self.logger = logging.getLogger(__name__)
             self.logger.setLevel(log_level)
             if not self.logger.handlers:
@@ -102,18 +110,18 @@ class AppleDoubleMetadata:
                 formatter = logging.Formatter('%(levelname)s: %(message)s')
                 handler.setFormatter(formatter)
                 self.logger.addHandler(handler)
-            
             self.logger.debug(f"Creating Entry instance for ID={eid}")
 
             # Look up entry type in Types enum and store integer to self.types
-            self.type: int = KaitaiStream.resolve_enum(
+            self.type = KaitaiStream.resolve_enum(
                 AppleDoubleMetadata.Entry.Types, 
                 eid
             )
 
-            self.logger.debug(f"  ID corresponds to type {AppleDoubleMetadata.Entry.Types(self.type)}")
+            self.logger.debug(f"  ID corresponds to type {AppleDoubleMetadata.Entry.Types(self.type).name}")
 
             # Special handling for finder_info entries (type 9)
+            #  This entry seems to nearly always (?) be present in ._Filename files
             if self.type == AppleDoubleMetadata.Entry.Types.finder_info:
                 self.logger.debug(f"  Finder info entry detected, parsing subfields")
                 ds = KaitaiStream(BytesIO(data))
@@ -122,11 +130,26 @@ class AppleDoubleMetadata:
                 self.file_type = ds.read_bytes(4)
                 self.file_creator = ds.read_bytes(4)
                 #self.flags = ds.read_u2be()
-                self.flags = ds.read_bytes(2)
+                self.flags = ds.read_bytes(2)  # 16 bits of flags
                 self.location = ds.read_bytes(4)
                 self.folder_id = ds.read_u2be()
+
+                self.logger.debug(f"  self.flags = {self.flags} (Boolean {bool(self.flags)}) ")
+
+                if self.flags:
+                    flagint = int.from_bytes(self.flags, byteorder='big')
+                    start_mask = 1
+                    end_mask = 4
+                    labelmask = ( (1 << (end_mask - start_mask)) - 1) << start_mask
+                    colorbits = (flagint & labelmask) >> start_mask
+
+                    self.logger.debug(f"Flags (binary) {flagint:b} with bitmask {labelmask:b} -> {colorbits:b} (dec {colorbits})")
+                    
+                    self.finder_colorval = colorbits
+
             
             # Special handling for file_info entries (type 7)
+            #  Does not seem to be present on most (all?) NAS documents - buffalo terastation
             if self.type == AppleDoubleMetadata.Entry.Types.file_info:
                 self.logger.debug(f"  File info entry detected, parsing subfields")
                 ds = KaitaiStream(BytesIO(data))

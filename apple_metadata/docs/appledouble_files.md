@@ -88,11 +88,11 @@ afp_file_info = 14
 afp_directory_id = 15
 
 All entry IDs from 0 to 0x7FFFFFFF are reserved to Apple.
-"The rest of the range is available for other definitions."
 
-> The entry data follows all of the entry descriptors.
-> The data in each entry must be in a single, contiguous block.
-> You can leave holes in the file for later expansion.
+> The rest of the range is available for other definitions.   
+> The entry data follows all of the entry descriptors.   
+> The data in each entry must be in a single, contiguous block.   
+> You can leave holes in the file for later expansion.   
 
 > Put the entries that are most often read, such as "Finder info," as close as possible to the header,
 > to increase the probablity that a read of the first block or two will retrieve these entries.
@@ -153,5 +153,35 @@ marked 'Protected' and 'Locked':
 > bytes of extended Finder information (the fields `ioFlFndrInfo` followed by 
 > `ioFlXFndrInfo`, as returned by the `PBGetCatinfo` call). These fields contain
 > extended-file-attribute information.  See _Inside Macintosh_, Volume VI, for a 
-> description of the subfields in these fields. Newly created files contain zeros in all
-> 'Finder info' fields.
+> description of the subfields in these fields. 
+> Newly created files contain zeros in all 'Finder info' fields.
+
+The 'Finder info' element is where we can find the first trace of Finder color labels
+that have been set on the originating HFS/HFS+ filesystem.
+
+* `ioFlFndrInfo` - "Desired Finder information" or "Mask for Finder information"
+  depending on `ioSearchInfo1` vs. `ioSearchInfo2`; probably safer to use the 
+  later / more recent definition.
+    * From [GetCatInfo][]: "ioFlFndrInfo is a record of type "FInfo," 
+      and contains 16 bytes of "Finder Information" about the file."
+    * Begins with `fdType` which is 4 byte file type
+    * Then `fdCreator` which is a 4 byte "creator signature"
+    * And then `fdFlags`, 2 bytes (16 bits) of mostly-one-bit flags with meanings:
+        * Bit 0: Reserved
+        * Bits 1-3: Color coding; a value from 0-7 indicating Finder color and Label
+        * Bits 4-5: Reserved
+        * Bit 6: `isShared` flag
+        * Bit 7: `hasNoINITs` flag
+        * Bit 8: `hasBeenInited` flag
+        * Bit 9: Reserved
+        * Bit 10: `hasCustomIcon` flag
+        * Bit 11: `isStationery` flag
+        * Bit 12: `nameLocked` flag
+        * Bit 13: `hasBundle` flag
+        * Bit 14: `isInvisible` flag
+        * Bit 15: `isAlias` flag
+
+* `ioFlXFndrInfo` - "Desired extended Finder information" or "Mask for Finder information"
+    * Have not seen any files on SMB share that have this filled with anything other than zeros
+
+[GetCatInfo]: https://rbrown.incolor.com/tutorials/getcatinfo.htm

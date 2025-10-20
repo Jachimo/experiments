@@ -3,12 +3,22 @@ AppleDouble "Flags" to Finder "Labels" Reference
 
 Finder "Labels" (colors) are stored as a 3-bit field
 inside the 'flags' field (16 bits), inside finder_info
-element(s).
+element(s) in AppleDouble metadata sidecar files.
 
 3b wide field: 0b000 -> 0b111 or 0 - 7 in decimal   
-Total of 8 values possible   
 
-COLOR      COLORVAL
--------------------
+On HFS+ filesystem, multiple color labels can be set 
+on a single file, but only one (primary?) is preserved 
+when a "._" sidecar file is written to a SMB share.
+
+
+COLOR      DECIMAL
+------------------
+<Unset>    0
+Gray       1
+Green      2
+Purple     3
+Blue       4
 Yellow     5
 Red        6
+Orange     7

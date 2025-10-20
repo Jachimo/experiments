@@ -11,6 +11,11 @@ import logging
 
 class AppleDoubleMetadata:
     def __init__(self, filepath, log_level=logging.WARNING):
+        self.filepath = filepath
+        self.appledoublepath = ""
+        self.entries = {}
+        self.color = ""
+
         # Logging setup
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(log_level)
@@ -19,10 +24,6 @@ class AppleDoubleMetadata:
             formatter = logging.Formatter('%(levelname)s: %(message)s')
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
-
-        self.filepath = filepath
-        self.appledoublepath = ""
-        self.entries = {}
         
         # Modern AppleDouble files usually have "._" prepended to the filename
         #  Older implementations can use "%" or "R." prefixes instead
@@ -71,15 +72,13 @@ class AppleDoubleMetadata:
             stream.seek(0)
             stream.seek(self.entries[eid]["offset"])
             data: bytes = stream.read_bytes(self.entries[eid]["length"])
-            # Create an Entry object for each
-            self.entries[eid]["obj"]= AppleDoubleMetadata.Entry(eid, data, log_level=self.logger.level)
+            # Create an Entry object for each, passing self as parent
+            self.entries[eid]["obj"]= AppleDoubleMetadata.Entry(self, eid, data, log_level=self.logger.level)
 
 
     class Entry:
-        # this is cribbed from https://formats.kaitai.io/apple_single_double/python.html
-        # License is https://spdx.org/licenses/CC0-1.0.html
-        
-        def __init__(self, eid: int, data: bytes, log_level=logging.WARNING):
+        def __init__(self, parent, eid: int, data: bytes, log_level=logging.WARNING):
+            self.parent = parent
             self.type: int = 0
             self.file_type: bytes = bytes(0)
             self.file_creator: bytes = bytes(0)
@@ -98,11 +97,7 @@ class AppleDoubleMetadata:
             self.logger.debug(f"Creating Entry instance for ID={eid}")
 
             # Look up entry type in Types enum and store integer to self.types
-            self.type = KaitaiStream.resolve_enum(
-                AppleDoubleMetadata.Entry.Types, 
-                eid
-            )
-
+            self.type = KaitaiStream.resolve_enum(AppleDoubleMetadata.Entry.Types, eid)
             self.logger.debug(f"  ID corresponds to type {AppleDoubleMetadata.Entry.Types(self.type).name}")
 
             # Special handling for finder_info entries (type 9)
@@ -128,9 +123,10 @@ class AppleDoubleMetadata:
                     labelmask = ( (1 << (end_mask - start_mask)) - 1) << start_mask
                     colorbits = (flagint & labelmask) >> start_mask
 
-                    self.logger.debug(f"Flags (binary) {flagint:b} with bitmask {labelmask:b} -> {colorbits:b} (dec {colorbits})")
+                    self.logger.debug(f"  Flags (binary) {flagint:b} with bitmask {labelmask:b} -> {colorbits:b} (dec {colorbits})")
                     
                     self.finder_colorval = colorbits
+                    parent.color = AppleDoubleMetadata.Entry.Colors(colorbits)
 
             
             # Special handling for file_info entries (type 7)
@@ -167,6 +163,16 @@ class AppleDoubleMetadata:
             afp_short_name = 13
             afp_file_info = 14
             afp_directory_id = 15
+        
+        class Colors(IntEnum):
+            """ Color values used by Mac OS Finder, by default """
+            Gray   =    1
+            Green  =    2
+            Purple =    3
+            Blue   =    4
+            Yellow =    5
+            Red    =    6
+            Orange =    7
 
 
     def dump(self):

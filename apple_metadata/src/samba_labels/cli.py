@@ -26,8 +26,7 @@ def print_finder_color(args=sys.argv, loglev=logging.WARNING) -> int:
 
     md: AppleDoubleMetadata = AppleDoubleMetadata(inpath, loglev)
     try:
-        finderinfo: AppleDoubleMetadata.Entry = md.entries[9]["obj"]
-        print(f"{inpath.split(os.path.sep)[-1]}: {finderinfo.finder_colorval}")
+        print(f"{inpath.split(os.path.sep)[-1]}: {md.color.name}")
     except:
         raise ValueError(f"Couldn't read Finder color flags in {inpath}")
         

@@ -8,6 +8,7 @@ packages = [{include = "samba_labels", from = "src"}]
 
 [tool.poetry.scripts]
 dump_file = "samba_labels.cli:dump_file"
+print_finder_color = "samba_labels.cli:print_finder_color"
 
 [tool.poetry.dependencies]
 python = "^3.8"

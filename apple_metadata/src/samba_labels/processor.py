@@ -8,8 +8,9 @@ from enum import IntEnum
 import os
 import logging
 
+
 class AppleDoubleMetadata:
-    def __init__(self, filepath, log_level=logging.DEBUG):
+    def __init__(self, filepath, log_level=logging.WARNING):
         # Logging setup
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(log_level)
@@ -70,31 +71,15 @@ class AppleDoubleMetadata:
             stream.seek(0)
             stream.seek(self.entries[eid]["offset"])
             data: bytes = stream.read_bytes(self.entries[eid]["length"])
-            self.entries[eid]["obj"]= AppleDoubleMetadata.Entry(eid, data)
+            # Create an Entry object for each
+            self.entries[eid]["obj"]= AppleDoubleMetadata.Entry(eid, data, log_level=self.logger.level)
 
 
     class Entry:
         # this is cribbed from https://formats.kaitai.io/apple_single_double/python.html
         # License is https://spdx.org/licenses/CC0-1.0.html
-
-        class Types(IntEnum):
-            data_fork = 1
-            resource_fork = 2
-            real_name = 3
-            comment = 4
-            icon_bw = 5
-            icon_color = 6
-            file_info = 7
-            file_dates_info = 8
-            finder_info = 9
-            macintosh_file_info = 10
-            prodos_file_info = 11
-            msdos_file_info = 12
-            afp_short_name = 13
-            afp_file_info = 14
-            afp_directory_id = 15
         
-        def __init__(self, eid: int, data: bytes, log_level=logging.DEBUG):
+        def __init__(self, eid: int, data: bytes, log_level=logging.WARNING):
             self.type: int = 0
             self.file_type: bytes = bytes(0)
             self.file_creator: bytes = bytes(0)
@@ -138,7 +123,7 @@ class AppleDoubleMetadata:
 
                 if self.flags:
                     flagint = int.from_bytes(self.flags, byteorder='big')
-                    start_mask = 1
+                    start_mask = 1  # counting from LSB, i.e. "right to left"
                     end_mask = 4
                     labelmask = ( (1 << (end_mask - start_mask)) - 1) << start_mask
                     colorbits = (flagint & labelmask) >> start_mask
@@ -160,6 +145,29 @@ class AppleDoubleMetadata:
                 self.mdate_bytes = ds.read_bytes(4)
                 self.bdate_bytes = ds.read_bytes(4)
                 self.flags_bytes = ds.read_bytes(4)
+            
+            if self.type > 15:
+                self.logger.warning(f"Unknown Entry type with value {self.type} found")
+
+
+        class Types(IntEnum):
+            """ Type codes used by the Finder Info entry """
+            data_fork = 1
+            resource_fork = 2
+            real_name = 3
+            comment = 4
+            icon_bw = 5
+            icon_color = 6
+            file_info = 7
+            file_dates_info = 8
+            finder_info = 9
+            macintosh_file_info = 10
+            prodos_file_info = 11
+            msdos_file_info = 12
+            afp_short_name = 13
+            afp_file_info = 14
+            afp_directory_id = 15
+
 
     def dump(self):
         from pprint import pprint
@@ -176,3 +184,4 @@ class AppleDoubleMetadata:
             eobj = self.entries[e]["obj"] # Entry object
             pprint(vars(eobj))
             print()
+

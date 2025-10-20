@@ -11,10 +11,14 @@ import logging
 
 class AppleDoubleMetadata:
     def __init__(self, filepath, log_level=logging.WARNING):
-        self.filepath = filepath
-        self.appledoublepath = ""
-        self.entries = {}
-        self.color = ""
+        self.filepath: str = filepath
+        self.appledoublepath: str = ""
+        self.entries: dict = {}
+        self.color: str = ""
+        self.magic: bytes = bytes(0)
+        self.version: int = 0
+        self.reserved: bytes = bytes(0)
+        self.num_entries: int = 0
 
         # Logging setup
         self.logger = logging.getLogger(__name__)
@@ -46,12 +50,11 @@ class AppleDoubleMetadata:
         self.logger.debug("Starting _parse_stream()")
 
         self.magic: bytes = stream.read_bytes(4)  # returns bytes
-        #self.magic: int = stream.read_u4be()    # returns integer ?
         self.version: int = stream.read_u4be()
         self.reserved: bytes = stream.read_bytes(16)
         self.num_entries: int = stream.read_u2be()
 
-        self.logger.info(f"Found {self.num_entries}")
+        self.logger.debug(f"Found {self.num_entries}")
         self.logger.debug(f"Magic bytes: {self.magic}")
 
         # Per kaitai.io and ArchiveTeam, apple_double = 00 05 16 07 (decimal 333319)
@@ -109,7 +112,6 @@ class AppleDoubleMetadata:
                 # "the fields ioFlFndrInfo followed by ioFlXFndrInfo, as returned by the PBGetCatinfo call"
                 self.file_type = ds.read_bytes(4)
                 self.file_creator = ds.read_bytes(4)
-                #self.flags = ds.read_u2be()
                 self.flags = ds.read_bytes(2)  # 16 bits of flags
                 self.location = ds.read_bytes(4)
                 self.folder_id = ds.read_u2be()
@@ -190,4 +192,3 @@ class AppleDoubleMetadata:
             eobj = self.entries[e]["obj"] # Entry object
             pprint(vars(eobj))
             print()
-

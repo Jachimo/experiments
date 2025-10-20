@@ -6,7 +6,7 @@ import logging
 from samba_labels import __version__
 from samba_labels.processor import AppleDoubleMetadata
 
-def dump_file(args=sys.argv, loglev=logging.DEBUG) -> int:
+def dump_file(args=sys.argv, loglev=logging.DEBUG) -> None:
     """ Dump contents of AppleDouble file """
     if len(args) != 2: 
         raise ValueError(f"Wrong number of arguments: {args}")
@@ -15,10 +15,8 @@ def dump_file(args=sys.argv, loglev=logging.DEBUG) -> int:
     md = AppleDoubleMetadata(inpath, loglev)
     print(md.dump())
 
-    return 0
 
-
-def print_finder_color(args=sys.argv, loglev=logging.WARNING) -> int:
+def print_finder_color(args=sys.argv, loglev=logging.WARNING) -> None:
     """ Print the decimal representation of the 3-bit Label flags """
     if len(args) != 2:
         raise ValueError(f"Wrong number of arguments: {args}")
@@ -31,7 +29,7 @@ def print_finder_color(args=sys.argv, loglev=logging.WARNING) -> int:
         raise ValueError(f"Couldn't read Finder color flags in {inpath}")
         
 
-def parse_with_kaitai(args=sys.argv) -> int:
+def parse_with_kaitai(args=sys.argv) -> None:
     """ Use the Kaitai-generated Python library to parse an AppleDouble file. """
     raise NotImplementedError("Kaitai not implemented yet")
     

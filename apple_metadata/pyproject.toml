@@ -9,11 +9,14 @@ packages = [{include = "samba_labels", from = "src"}]
 [tool.poetry.scripts]
 dump_file = "samba_labels.cli:dump_file"
 print_finder_color = "samba_labels.cli:print_finder_color"
+print_xattrs = "samba_labels.cli:print_xattrs"
+set_color_xattr = "samba_labels.cli:set_color_xattr"
 
 [tool.poetry.dependencies]
 python = "^3.8"
 python-dotenv = "^1.0.0"
 kaitaistruct = "^0.11"
+pyxattr = "^0.8.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

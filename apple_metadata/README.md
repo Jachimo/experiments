@@ -19,10 +19,13 @@ For the impatient looking for a tl;dr:
 
     cd path/to/this/project
     poetry install
+
     cd path/to/files/with/metadata
     
     # Run on files of interest using a Bash-style for loop:
-    for f in *.ext; do 
+    # (Set the file extensions you care about appropriately)
+    
+    for f in *.{jpg,jpeg,mov,mp4,avi,mkv}; do 
         set_color_sidecar "$f"
     done
 

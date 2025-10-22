@@ -109,16 +109,16 @@ class AppleDoubleMetadata:
                 ds = KaitaiStream(BytesIO(data))
                 # Per Apple docs, 16B of 'Finder information' followed by 16B of extended info
                 # "the fields ioFlFndrInfo followed by ioFlXFndrInfo, as returned by the PBGetCatinfo call"
-                self.file_type = ds.read_bytes(4)
-                self.file_creator = ds.read_bytes(4)
-                self.flags = ds.read_bytes(2)  # 16 bits of flags
-                self.location = ds.read_bytes(4)
-                self.folder_id = ds.read_u2be()
+                self.file_type: bytes = ds.read_bytes(4)
+                self.file_creator: bytes = ds.read_bytes(4)
+                self.flags: bytes = ds.read_bytes(2)  # 16 bits of flags
+                self.location: bytes = ds.read_bytes(4)
+                self.folder_id: int = ds.read_u2be()
+                flagint: int = int.from_bytes(self.flags, byteorder='big')
 
-                self.logger.debug(f"  self.flags = {int.from_bytes(self.flags, byteorder='big'):b} (Boolean {bool(self.flags)}) ")
+                self.logger.debug(f"  self.flags = {flagint:b} (Boolean {bool(flagint)}) ")
 
-                if self.flags:
-                    flagint: int = int.from_bytes(self.flags, byteorder='big')
+                if flagint:  # False if all zeros...
                     # Need to extract 3 bits from 16 total, in positions 'Y':  NNNNNNNNNNNNYYYN
                     # This requires some bitwise twiddling...
                     start_mask: int = 1  # counting from LSB, i.e. "right to left"

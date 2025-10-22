@@ -27,13 +27,17 @@ class AppleDoubleMetadata:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
         
-        self.logger.info(f"Processing data file {filepath}")
+        # Check for input file
+        self.logger.info(f"Processing input data file {self.filepath}")
+        if not os.path.exists(self.filepath):
+            raise FileNotFoundError(f"Input file not found: {self.filepath}")
         
-        # Modern AppleDouble files usually have "._" prepended to the filename
-        #  Older implementations can use "%" or "R." prefixes instead
-        self.appledoublepath = os.path.join(os.path.dirname(filepath), f"._{os.path.basename(filepath)}")
+        # Check for AppleDouble metadata sidecar file:
+        #   Modern AppleDouble files usually have "._" prepended to the filename
+        #   Older implementations can use "%" or "R." prefixes instead
+        self.appledoublepath = os.path.join(os.path.dirname(self.filepath), f"._{os.path.basename(self.filepath)}")
         
-        self.logger.info(f"Checking for AppleDouble file at {self.appledoublepath}")
+        self.logger.debug(f"Checking for AppleDouble file at {self.appledoublepath}")
         if not os.path.exists(self.appledoublepath):
             # TODO: Check for old-style "%filename" and "R.filename" as well
             raise FileNotFoundError(f"AppleDouble file not found: {self.appledoublepath}")
@@ -45,7 +49,7 @@ class AppleDoubleMetadata:
     
 
     def _parse_stream(self, stream):
-        self.logger.debug("Starting _parse_stream()")
+        self.logger.debug("Starting _parse_stream(): li.52")
 
         self.magic: bytes = stream.read_bytes(4)  # returns bytes
         self.version: int = stream.read_u4be()

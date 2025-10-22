@@ -22,3 +22,17 @@ Blue       4
 Yellow     5
 Red        6
 Orange     7
+
+
+Compare to DigiKam color codes:
+
+None       0 or none set
+Red        1
+Orange     2
+Yellow     3
+Green      4
+Blue       5
+Magenta    6
+Gray       7
+Black      8
+White      9

@@ -24,7 +24,7 @@ For the impatient looking for a tl;dr:
     
     # Run on files of interest using a Bash-style for loop:
     # (Set the file extensions you care about appropriately)
-    
+
     for f in *.{jpg,jpeg,mov,mp4,avi,mkv}; do 
         set_color_sidecar "$f"
     done
@@ -36,7 +36,7 @@ It's probably a good idea to run it on a handful of files first, for testing.
 
 Install all dependencies into the local environment:
 
-   poetry install
+    poetry install
 
 This is necessary before running any of the commands below.
 
@@ -45,7 +45,7 @@ This is necessary before running any of the commands below.
 
 Dump the AppleDouble metadata for a single file in human-readable format:
 
-   poetry run dump_file /mnt/myshare/path/to/file
+    poetry run dump_file /mnt/myshare/path/to/file
 
 Note that the single argument is the path towards a *visible* file on the SMB share
 or filesystem; the utility will add the leading `._` to find the related AppleDouble

@@ -27,6 +27,8 @@ class AppleDoubleMetadata:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
         
+        self.logger.info(f"Processing data file {filepath}")
+        
         # Modern AppleDouble files usually have "._" prepended to the filename
         #  Older implementations can use "%" or "R." prefixes instead
         self.appledoublepath = os.path.join(os.path.dirname(filepath), f"._{os.path.basename(filepath)}")
@@ -35,7 +37,7 @@ class AppleDoubleMetadata:
         if not os.path.exists(self.appledoublepath):
             # TODO: Check for old-style "%filename" and "R.filename" as well
             raise FileNotFoundError(f"AppleDouble file not found: {self.appledoublepath}")
-        self.logger.info(f"File found at {self.appledoublepath}")
+        self.logger.info(f"AppleDouble file found at {self.appledoublepath}")
 
         with open(self.appledoublepath, "rb") as f:
             stream = KaitaiStream(BytesIO(f.read()))
@@ -50,8 +52,9 @@ class AppleDoubleMetadata:
         self.reserved: bytes = stream.read_bytes(16)
         self.num_entries: int = stream.read_u2be()
 
-        self.logger.debug(f"Found {self.num_entries}")
-        self.logger.debug(f"Magic bytes: {self.magic}")
+        self.logger.debug(f"Magic bytes: {hex(int.from_bytes(self.magic, byteorder='big'))}")
+        self.logger.debug(f"AppleDouble version {self.version}")
+        self.logger.debug(f"Found {self.num_entries} Entry objects")
 
         # Per kaitai.io and ArchiveTeam, apple_double = 00 05 16 07 (decimal 333319)
         if self.magic != b'\x00\x05\x16\x07':
@@ -94,7 +97,7 @@ class AppleDoubleMetadata:
                 handler.setFormatter(formatter)
                 self.logger.addHandler(handler)
             
-            self.logger.debug(f"Creating Entry instance for ID={eid}")
+            self.logger.debug(f"Parsing Entry with ID = {eid}")
 
             # Look up entry type in Types enum and store integer to self.types
             self.type = KaitaiStream.resolve_enum(AppleDoubleMetadata.Entry.Types, eid)
@@ -112,18 +115,18 @@ class AppleDoubleMetadata:
                 self.location = ds.read_bytes(4)
                 self.folder_id = ds.read_u2be()
 
-                self.logger.debug(f"  self.flags = {self.flags} (Boolean {bool(self.flags)}) ")
+                self.logger.debug(f"  self.flags = {int.from_bytes(self.flags, byteorder='big'):b} (Boolean {bool(self.flags)}) ")
 
                 if self.flags:
-                    flagint = int.from_bytes(self.flags, byteorder='big')
+                    flagint: int = int.from_bytes(self.flags, byteorder='big')
                     # Need to extract 3 bits from 16 total, in positions 'Y':  NNNNNNNNNNNNYYYN
                     # This requires some bitwise twiddling...
-                    start_mask = 1  # counting from LSB, i.e. "right to left"
-                    end_mask = 4
+                    start_mask: int = 1  # counting from LSB, i.e. "right to left"
+                    end_mask: int = 4
                     labelmask = ( (1 << (end_mask - start_mask)) - 1) << start_mask
                     colorbits = (flagint & labelmask) >> start_mask
 
-                    self.logger.debug(f"  Flags (binary) {flagint:b} with bitmask {labelmask:b} -> {colorbits:b} (dec {colorbits})")
+                    self.logger.debug(f"  Flag bits {flagint:b} with bitmask {labelmask:b} -> {colorbits:b} (decimal {colorbits})")
                     
                     self.finder_colorval = colorbits
                     parent.color = AppleDoubleMetadata.Entry.Colors(colorbits)

@@ -28,16 +28,18 @@ class ExifToolTarget:
             self.logger.addHandler(handler)
         
         # Instantiation
-        self.logger.debug(f"Checking if sidecar file exists for {self.filepath}")
         self.hassidecar = self.check_sidecar_exists()
 
 
     def check_sidecar_exists(self) -> Tribool:
+        self.logger.debug(f"Checking if sidecar file exists for {self.filepath}")
         if not os.path.exists(self.filepath):
             raise FileNotFoundError(f"{self.filepath} not found")
         if not os.path.exists(self.mdpath):
+            self.logger.debug(f"No sidecar file found ({self.mdpath} does not exist)")
             return Tribool(False)
         if os.path.exists(self.mdpath):
+            self.logger.debug(f"Existing sidecar file found at {self.mdpath}")
             return Tribool(True)
 
 
@@ -52,6 +54,7 @@ class ExifToolTarget:
         # The -o option will create an XMP if it doesn't exist but error if it does, will not overwrite
         self.logger.debug(f"Creating new sidecar file for {self.filepath}")
         p = subprocess.run(["exiftool", self.filepath, "-o", self.mdpath])
+        self.logger.debug(f"EXIFTOOL: subprocess completed with status {p.returncode}")
         if p.returncode == 0:
             self.hassidecar = Tribool(True)
             self.logger.debug(f"Sidecar file successfully created at {self.mdpath}")
@@ -67,7 +70,9 @@ class ExifToolTarget:
         if self.hassidecar.value is not True:
             self.create_sidecar()
         
-        p = subprocess.run(["exiftool", f'-{fieldname}={value}', self.mdpath])
+        self.logger.debug(f"Attempting to write {fieldname}={value} to {self.mdpath}")
+
+        p = subprocess.run(["exiftool", "-overwrite_original", f'-{fieldname}={value}', self.mdpath])
         if p.returncode == 0:
             self.logger.debug(f"EXIFTOOL: Wrote {fieldname}={value} to {self.mdpath}")
             return True

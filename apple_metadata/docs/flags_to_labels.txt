@@ -24,9 +24,11 @@ Red        6
 Orange     7
 
 
-Compare to DigiKam color codes:
+Compare to DigiKam color codes (stored in "digiKam:ColorLabel" among potentially other places):
 
-None       0 or none set
+DK COLOR   DEC VALUE
+--------------------
+None       Unset
 Red        1
 Orange     2
 Yellow     3

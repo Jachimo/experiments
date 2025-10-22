@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "samba-labels"
 version = "0.1.0"
-description = "Tool for transferring Mac Finder labels on Samba shares to Linux xattrs"
+description = "Tool for transferring Mac Finder color labels to useful metadata"
 authors = ["Jachimo <jachimo@noreply.github.com>"]
 readme = "README.md"
 packages = [{include = "samba_labels", from = "src"}]
@@ -11,6 +11,7 @@ dump_file = "samba_labels.cli:dump_file"
 print_finder_color = "samba_labels.cli:print_finder_color"
 print_xattrs = "samba_labels.cli:print_xattrs"
 set_color_xattr = "samba_labels.cli:set_color_xattr"
+set_color_sidecar = "samba_labels.cli:set_color_sidecar"
 
 [tool.poetry.dependencies]
 python = "^3.8"

@@ -8,6 +8,7 @@ import xattr  # see https://github.com/iustin/pyxattr
 from samba_labels import __version__
 from samba_labels.processor import AppleDoubleMetadata
 from samba_labels.exiftooling import ExifToolTarget
+from samba_labels.utility import finder_to_digikam_color, DigikamColors
 
 
 def dump_file(args=sys.argv, loglev=logging.DEBUG) -> None:
@@ -55,6 +56,21 @@ def set_color_xattr(args=sys.argv, loglev=logging.DEBUG) -> None:
         raise ValueError(f"Wrong number of arguments: {args}")
     inpath: str = args[1]
 
-    md: AppleDoubleMetadata = AppleDoubleMetadata(inpath, loglev)
+    aamd = AppleDoubleMetadata(inpath, loglev)
+    if aamd.color.name:
+        xattr.setxattr(inpath, "user.color", aamd.color.name)
 
-    xattr.setxattr(inpath, "user.color", md.color.name)
+
+def set_color_sidecar(args=sys.argv, loglev=logging.DEBUG) -> None:
+    """ Sets the 'XMP-digiKam' metadata attribute to the Finder label color from the AppleDouble metadata.
+        This will create an XMP metadata sidecar file, populated from the file internal metadata using exiftool. """
+    if len(args) != 2:
+        raise ValueError(f"Wrong number of arguments: {args}")
+    inpath: str = args[1]
+
+    aamd = AppleDoubleMetadata(inpath, loglev)
+    if aamd.color.name:
+        dk_color = finder_to_digikam_color[aamd.color.name]  # get corresponding Digikam color for Finder color
+        dk_colorval = DigikamColors[dk_color]  # convert to appropriate integer (see utility.py)
+        exmd = ExifToolTarget(inpath, log_level=loglev)
+        exmd.write_field_value('XMP-digiKam:ColorLabel', dk_colorval)

@@ -1,8 +1,6 @@
 # Processing logic for AppleDouble metadata.
 #  Ref http://kaiser-edv.de/documents/AppleSingle_AppleDouble.pdf
 
-from operator import truediv
-import kaitaistruct
 from kaitaistruct import KaitaiStruct, KaitaiStream, BytesIO
 from enum import IntEnum
 import os
@@ -31,9 +29,7 @@ class AppleDoubleMetadata:
         
         # Modern AppleDouble files usually have "._" prepended to the filename
         #  Older implementations can use "%" or "R." prefixes instead
-        self.appledoublepath = os.path.join(
-            os.path.dirname(filepath), 
-            f"._{os.path.basename(filepath)}")
+        self.appledoublepath = os.path.join(os.path.dirname(filepath), f"._{os.path.basename(filepath)}")
         
         self.logger.info(f"Checking for AppleDouble file at {self.appledoublepath}")
         if not os.path.exists(self.appledoublepath):
@@ -81,7 +77,7 @@ class AppleDoubleMetadata:
 
     class Entry:
         def __init__(self, parent, eid: int, data: bytes, log_level=logging.WARNING):
-            self.parent = parent
+            self.parent = parent  # so we can access parent attributes
             self.type: int = 0
             self.file_type: bytes = bytes(0)
             self.file_creator: bytes = bytes(0)
@@ -97,14 +93,14 @@ class AppleDoubleMetadata:
                 formatter = logging.Formatter('%(levelname)s: %(message)s')
                 handler.setFormatter(formatter)
                 self.logger.addHandler(handler)
+            
             self.logger.debug(f"Creating Entry instance for ID={eid}")
 
             # Look up entry type in Types enum and store integer to self.types
             self.type = KaitaiStream.resolve_enum(AppleDoubleMetadata.Entry.Types, eid)
             self.logger.debug(f"  ID corresponds to type {AppleDoubleMetadata.Entry.Types(self.type).name}")
 
-            # Special handling for finder_info entries (type 9)
-            #  This entry seems to nearly always (?) be present in ._Filename files
+            # Special handling for finder_info entries (type 9) which store the Label color
             if self.type == AppleDoubleMetadata.Entry.Types.finder_info:
                 self.logger.debug(f"  Finder info entry detected, parsing subfields")
                 ds = KaitaiStream(BytesIO(data))
@@ -120,6 +116,8 @@ class AppleDoubleMetadata:
 
                 if self.flags:
                     flagint = int.from_bytes(self.flags, byteorder='big')
+                    # Need to extract 3 bits from 16 total, in positions 'Y':  NNNNNNNNNNNNYYYN
+                    # This requires some bitwise twiddling...
                     start_mask = 1  # counting from LSB, i.e. "right to left"
                     end_mask = 4
                     labelmask = ( (1 << (end_mask - start_mask)) - 1) << start_mask
@@ -132,7 +130,7 @@ class AppleDoubleMetadata:
 
             
             # Special handling for file_info entries (type 7)
-            #  Does not seem to be present on most (all?) NAS documents - buffalo terastation
+            #  On Buffalo Terastation SMB implementation, these seem to be all zero-byte filled
             if self.type == AppleDoubleMetadata.Entry.Types.file_info:
                 self.logger.debug(f"  File info entry detected, parsing subfields")
                 ds = KaitaiStream(BytesIO(data))
@@ -144,6 +142,7 @@ class AppleDoubleMetadata:
                 self.bdate_bytes = ds.read_bytes(4)
                 self.flags_bytes = ds.read_bytes(4)
             
+            # Type codes above 15 are not defined by Apple (that I can find), unlikely to be valid
             if self.type > 15:
                 self.logger.warning(f"Unknown Entry type with value {self.type} found")
 
@@ -178,8 +177,8 @@ class AppleDoubleMetadata:
 
 
     def dump(self):
-        from pprint import pprint
         """ Dump contents to stdout, mostly for debugging """
+        from pprint import pprint
         print("---------------------------------")
         print(f"File Path: {self.filepath}")
         print(f"AppleDouble Path: {self.appledoublepath}")

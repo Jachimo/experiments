@@ -45,19 +45,24 @@ class ExifToolTarget:
 
     def create_sidecar(self) -> bool:
         if self.hassidecar.value is None:
-            self.check_sidecar_exists()
+            self.logger.debug(f"Existence of sidecar file unknown; need to check -- create_sidecar() l.46")
+            self.hassidecar = self.check_sidecar_exists()
         if self.hassidecar.value is True:
             self.logger.debug(f"Found existing sidecar file at {self.mdpath}")
             return True  # my work here is done
         
         # Else create it by calling exiftool via subprocess
         # The -o option will create an XMP if it doesn't exist but error if it does, will not overwrite
-        self.logger.debug(f"Creating new sidecar file for {self.filepath}")
-        p = subprocess.run(["exiftool", self.filepath, "-o", self.mdpath])
-        self.logger.debug(f"EXIFTOOL: subprocess completed with status {p.returncode}")
+        cmd = ["exiftool", self.filepath, "-o", self.mdpath]
+
+        self.logger.debug(f"SUBSHELL: {' '.join(cmd)}")
+        
+        p = subprocess.run(cmd)
+        self.logger.debug(f"SUBSHELL: completed with status {p.returncode}")
+
         if p.returncode == 0:
             self.hassidecar = Tribool(True)
-            self.logger.debug(f"Sidecar file successfully created at {self.mdpath}")
+            self.logger.info(f"Sidecar file created at {self.mdpath}")
             return True
         else:
             self.hassidecar = Tribool(None)  # since we do not know for sure what happened...

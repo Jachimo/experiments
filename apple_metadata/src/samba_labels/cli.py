@@ -72,7 +72,12 @@ def set_color_sidecar(args=sys.argv, loglev=logging.DEBUG) -> int:
         raise ValueError(f"Wrong number of arguments: {args}")
     inpath: str = args[1]
 
-    aamd = AppleDoubleMetadata(inpath, loglev)
+    try:
+        aamd = AppleDoubleMetadata(inpath, loglev)
+    except Exception as e:
+        print(e)
+        return 1
+    
     if aamd.color:
         dk_color = finder_to_digikam_color[aamd.color.name]  # get corresponding Digikam color for Finder color
         dk_colorval = DigikamColors[dk_color]  # convert to appropriate integer (see utility.py)

@@ -17,6 +17,8 @@ python = "^3.8"
 python-dotenv = "^1.0.0"
 kaitaistruct = "^0.11"
 pyxattr = "^0.8.1"
+#pyexiftool = "^0.5.6"
+tribool = "^0.7.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

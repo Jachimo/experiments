@@ -7,6 +7,7 @@ import xattr  # see https://github.com/iustin/pyxattr
 
 from samba_labels import __version__
 from samba_labels.processor import AppleDoubleMetadata
+from samba_labels.exiftooling import ExifToolTarget
 
 
 def dump_file(args=sys.argv, loglev=logging.DEBUG) -> None:
@@ -57,9 +58,3 @@ def set_color_xattr(args=sys.argv, loglev=logging.DEBUG) -> None:
     md: AppleDoubleMetadata = AppleDoubleMetadata(inpath, loglev)
 
     xattr.setxattr(inpath, "user.color", md.color.name)
-
-
-def parse_with_kaitai(args=sys.argv) -> None:
-    """ Use the Kaitai-generated Python library to parse an AppleDouble file. """
-    raise NotImplementedError("Kaitai not implemented yet")
-    
